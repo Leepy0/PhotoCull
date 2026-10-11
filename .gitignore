@@ -11,3 +11,6 @@ captures/
 *.jks
 *.p12
 *.keystore
+
+# 에이전트 작업용 worktree
+.claude/worktrees/
