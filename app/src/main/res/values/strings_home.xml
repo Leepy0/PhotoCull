@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 홈 -->
+    <string name="home_update_chip">업데이트</string>
+
+    <!-- 카드 상태 카드 -->
+    <string name="home_card_not_connected_title">카드 리더를 연결하세요</string>
+    <string name="home_card_not_connected_body">SD 카드를 꽂은 카드 리더를 폰에 연결하면 가져올 사진을 바로 확인합니다</string>
+    <string name="home_card_interrupted">지난 가져오기가 %1$s/%2$s개에서 멈췄습니다. 카드를 다시 연결하고 가져오기를 누르면 남은 파일부터 이어서 가져옵니다</string>
+    <string name="home_card_not_camera_title">카메라 카드가 아닙니다</string>
+    <string name="home_card_not_camera_body">DCIM 폴더나 사진·영상을 찾지 못했습니다. 카메라에서 쓰던 카드를 연결하세요</string>
+    <string name="home_card_needs_access_title">카드 폴더 접근을 허용하세요</string>
+    <string name="home_card_needs_access_body">이 폰에서는 카드를 한 번 승인해야 읽을 수 있습니다. 아래 버튼을 누르고 [이 폴더 사용]을 선택하세요</string>
+    <string name="home_card_no_permission_title">파일 접근 권한이 필요합니다</string>
+    <string name="home_card_no_permission_body">카드를 확인하고 사진을 옮기려면 ‘모든 파일 접근’을 허용해야 합니다</string>
+    <string name="home_card_connected">카메라 카드 연결됨</string>
+    <string name="home_card_checking">카드 확인 중</string>
+    <string name="home_card_new_files">새 파일 %1$s개</string>
+    <!-- 사진 324 · RAW 120 · 영상 12 · 18.4 GB -->
+    <string name="home_card_stats">사진 %1$s · RAW %2$s · 영상 %3$s · %4$s</string>
+    <string name="home_card_already">이미 가져온 %1$s개는 건너뜁니다</string>
+    <string name="home_card_nothing_new">새로 가져올 파일이 없습니다</string>
+    <string name="home_card_low_space">저장 공간이 %1$s 부족합니다</string>
+    <string name="home_card_importing">가져오는 중</string>
+    <string name="home_card_preparing">가져오기 준비 중</string>
+    <string name="home_card_preparing_body">%1$s개 · %2$s를 옮길 준비를 하고 있습니다</string>
+    <string name="home_card_importing_files">%1$s/%2$s개</string>
+    <string name="home_card_importing_eta">%1$s 남음</string>
+    <string name="home_card_open_import_desc">가져오기 화면 열기</string>
+    <string name="home_card_finished">가져오기 완료</string>
+    <string name="home_card_finished_cancelled">가져오기를 취소했습니다</string>
+    <string name="home_card_finished_moved">%1$s개 이동 · %2$s</string>
+    <string name="home_card_finished_copied">%1$s개 복사 · %2$s</string>
+    <string name="home_card_finished_nothing">새로 가져온 파일이 없습니다</string>
+    <string name="home_card_finished_failed">실패 %1$s개 · 카드에 그대로 있습니다</string>
+    <string name="home_card_finished_delete_failed">카드에서 못 지움 %1$s개</string>
+    <string name="home_card_view_result">결과 보기</string>
+    <string name="home_card_dismiss">닫기</string>
+    <string name="home_card_check_again">다시 확인</string>
+
+    <!-- 검토 대기 -->
+    <string name="home_review_title">검토 대기</string>
+    <string name="home_review_blur">흐린 사진</string>
+    <string name="home_review_burst">연사·비슷한 사진</string>
+    <string name="home_review_video">영상</string>
+    <string name="home_review_blur_count">%1$d장</string>
+    <string name="home_review_burst_count">%1$d그룹 · %2$d장</string>
+    <string name="home_review_video_count">%1$d개</string>
+    <string name="home_review_video_short">짧은 영상 %1$d개 포함</string>
+    <string name="home_review_none">없음</string>
+    <string name="home_review_open">%1$s %2$s 검토</string>
+    <string name="home_review_empty_title">검토할 사진이 없습니다</string>
+    <string name="home_review_empty_body">카드에서 사진을 가져오면 흐린 사진과 연사를 골라 여기에 보여줍니다</string>
+    <string name="home_review_done_body">가져온 사진을 모두 정리했습니다</string>
+    <string name="home_review_error">검토 목록을 불러오지 못했습니다</string>
+    <string name="home_analysis_running">사진 분석 중 %1$d/%2$d</string>
+    <string name="home_analysis_waiting">사진 분석 준비 중</string>
+    <string name="home_analysis_hint">끝나는 대로 목록이 늘어납니다</string>
+
+    <!-- 마지막 가져오기 -->
+    <string name="home_last_title">마지막 가져오기</string>
+    <!-- 오늘 · 300개 이동 -->
+    <string name="home_last_moved">%1$s · %2$s개 이동</string>
+    <string name="home_last_copied">%1$s · %2$s개 복사</string>
+    <string name="home_last_skipped">이미 있던 %1$s개 건너뜀</string>
+    <string name="home_last_cancelled">중간에 취소함 · 남은 파일은 카드에 그대로 있습니다</string>
+    <string name="home_last_interrupted">중간에 멈춤 · 카드를 다시 연결하고 가져오기를 누르면 이어서 가져옵니다</string>
+    <string name="home_last_failed">실패 %1$s개 · 카드에 그대로 있습니다</string>
+    <string name="home_last_delete_failed">카드에서 못 지움 %1$s개 · 쓰기 방지 스위치를 확인하세요</string>
+
+    <!-- 하단 주요 행동 -->
+    <string name="home_action_import">가져오기</string>
+    <!-- 가져오기 · 300개 · 17.9 GB -->
+    <string name="home_action_import_count">가져오기 · %1$s개 · %2$s</string>
+    <string name="home_action_grant">권한 허용</string>
+    <string name="home_action_grant_folder">폴더 접근 허용</string>
+    <string name="home_action_review_continue">검토 계속</string>
+    <string name="home_action_review_continue_with">검토 계속 · %1$s</string>
+    <string name="home_action_review_start">검토 시작</string>
+    <string name="home_action_review_start_with">검토 시작 · %1$s</string>
+</resources>

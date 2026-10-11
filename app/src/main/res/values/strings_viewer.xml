@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 사진·영상 뷰어 -->
+    <string name="viewer_position">%1$d / %2$d</string>
+    <string name="viewer_sharpness">선명도 %1$d</string>
+    <string name="viewer_zoom_fit">전체 보기</string>
+    <string name="viewer_zoom_original" formatted="false">100%</string>
+    <string name="viewer_zoom_fit_desc">사진 전체를 화면에 맞춰 보기</string>
+    <string name="viewer_zoom_original_desc" formatted="false">원본 크기(100%)로 확대해 보기</string>
+    <string name="viewer_image_error_title">사진을 열 수 없습니다</string>
+    <string name="viewer_image_error_body">파일이 옮겨졌거나 삭제되었습니다</string>
+    <string name="viewer_image_corrupt_body">파일이 손상되었거나 열 수 없는 형식입니다</string>
+    <string name="viewer_previous">이전</string>
+    <string name="viewer_next">다음</string>
+
+    <!-- 영상 -->
+    <string name="viewer_play">재생</string>
+    <string name="viewer_pause">일시정지</string>
+    <string name="viewer_video_time">%1$s / %2$s</string>
+    <string name="viewer_video_seek">재생 위치</string>
+    <string name="viewer_open_external">다른 앱으로 열기</string>
+    <string name="viewer_open_external_failed">이 파일을 열 수 있는 앱이 없습니다</string>
+    <string name="viewer_video_error_title">영상을 재생할 수 없습니다</string>
+    <string name="viewer_video_error_body">다른 앱으로 열어 보세요</string>
+</resources>

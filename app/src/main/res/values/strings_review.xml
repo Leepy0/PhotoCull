@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 검토 화면 -->
+    <string name="review_title">검토</string>
+    <string name="review_tab_blur_plain">흐림</string>
+    <string name="review_tab_burst_plain">연사</string>
+    <string name="review_tab_video_plain">영상</string>
+    <string name="review_tab_blur">흐림 %1$d</string>
+    <string name="review_tab_burst">연사 %1$d</string>
+    <string name="review_tab_video">영상 %1$d</string>
+    <string name="review_analysis_running">사진 분석 중 %1$d/%2$d · 끝나는 대로 목록이 늘어납니다</string>
+
+    <!-- 하단 주요 행동 -->
+    <!-- 용량은 휴지통을 비워야 생기므로 '확보'라고 쓰지 않는다 -->
+    <string name="review_delete_photos">%1$d장 삭제 · %2$s</string>
+    <string name="review_delete_videos">%1$d개 삭제 · %2$s</string>
+    <string name="review_keep_all_photos">%1$d장 모두 유지</string>
+    <string name="review_keep_all_videos">%1$d개 모두 유지</string>
+    <!-- 이번에 이미 일부를 정리한 탭에서만 '남은'을 붙인다 -->
+    <string name="review_keep_rest_photos">남은 %1$d장 모두 유지</string>
+    <string name="review_keep_rest_videos">남은 %1$d개 모두 유지</string>
+    <string name="review_working">처리 중</string>
+    <string name="review_hint_delete">휴지통으로 옮깁니다 · 휴지통을 비우면 공간이 생깁니다</string>
+    <string name="review_hint_keep">유지하면 검토 목록에서 빠집니다</string>
+
+    <!-- 스낵바 -->
+    <string name="review_snack_trashed_photos">%1$d장을 휴지통으로 옮겼습니다</string>
+    <string name="review_snack_trashed_videos">%1$d개를 휴지통으로 옮겼습니다</string>
+    <string name="review_snack_trashed_partial_photos">%1$d장을 옮겼고 %2$d장은 옮기지 못했습니다</string>
+    <string name="review_snack_trashed_partial_videos">%1$d개를 옮겼고 %2$d개는 옮기지 못했습니다</string>
+    <string name="review_snack_still_importing">아직 가져오는 중인 파일은 지울 수 없습니다. 가져오기가 끝난 뒤 다시 시도하세요</string>
+    <string name="review_snack_already_gone">%1$d개는 파일이 이미 지워져 목록에서 뺐습니다</string>
+    <string name="review_snack_trash_failed">휴지통으로 옮기지 못했습니다. 파일 접근 권한을 확인하고 다시 시도하세요</string>
+    <string name="review_snack_kept_photos">%1$d장을 유지했습니다</string>
+    <string name="review_snack_kept_videos">%1$d개를 유지했습니다</string>
+    <string name="review_snack_action_failed">작업을 마치지 못했습니다. 다시 시도하세요</string>
+    <string name="review_snack_undo_failed">되돌리지 못했습니다. 휴지통 화면에서 복원하세요</string>
+
+    <!-- 흐림 탭 -->
+    <string name="review_sensitivity_label">흐림 민감도</string>
+    <string name="review_sensitivity_low">낮음</string>
+    <string name="review_sensitivity_normal">보통</string>
+    <string name="review_sensitivity_high">높음</string>
+    <string name="review_blur_caption">선명도 %1$d 미만 · 흐린 순</string>
+    <string name="review_select_all">모두 선택</string>
+    <string name="review_clear_selection">선택 해제</string>
+    <string name="review_selected_count">%1$d장 선택</string>
+    <string name="review_sharpness">선명도 %1$d</string>
+    <string name="review_raw_badge">RAW</string>
+    <string name="review_open_photo">%1$s 크게 보기</string>
+    <string name="review_blur_empty_title">흐린 사진이 없습니다</string>
+    <string name="review_blur_empty_body_raise">지금 기준보다 흐린 사진이 없습니다. 민감도를 높이면 더 많이 찾습니다</string>
+    <string name="review_blur_empty_body_high">가장 높은 민감도에서도 흐린 사진이 없습니다</string>
+
+    <!-- 연사 탭 -->
+    <string name="review_burst_header_title">연사·비슷한 사진 %1$d그룹 · 사진 %2$d장</string>
+    <string name="review_burst_header_blurry">전체가 흐린 %1$d그룹은 베스트도 흐림 탭에서 다시 확인합니다</string>
+    <string name="review_burst_header_analyzing">분석 중이라 그룹이 바뀔 수 있습니다</string>
+    <string name="review_burst_keep_all">삭제 없이 모두 유지</string>
+    <string name="review_burst_best_only">베스트만 남기고 %1$d장 삭제 · %2$s</string>
+    <string name="review_burst_hint">그룹마다 ★베스트 1장은 남깁니다</string>
+    <string name="review_group_kind_burst">연사 %1$d장</string>
+    <string name="review_group_kind_similar">비슷한 사진 %1$d장</string>
+    <string name="review_group_all_blurry">전체가 흐림</string>
+    <string name="review_group_span_seconds">%1$d초 동안</string>
+    <string name="review_group_span_short">1초 안에</string>
+    <string name="review_group_meta">%1$s · %2$s</string>
+    <string name="review_group_open">그룹 열기</string>
+    <string name="review_burst_empty_title">정리할 연사가 없습니다</string>
+    <string name="review_burst_empty_body">연속으로 찍었거나 비슷하게 찍은 사진을 묶어 여기에 보여줍니다</string>
+
+    <!-- 영상 탭 -->
+    <string name="review_video_short_section">실수 촬영 후보 · %1$s 이하</string>
+    <string name="review_video_rest_section">나머지 영상 · 용량 큰 순</string>
+    <string name="review_video_section_summary">%1$d개 · %2$s</string>
+    <string name="review_video_label">%1$s · %2$s</string>
+    <string name="review_video_seconds">%1$d초</string>
+    <string name="review_video_empty_title">검토할 영상이 없습니다</string>
+    <string name="review_video_empty_body">가져온 영상은 여기에서 짧은 것부터 확인합니다</string>
+
+    <!-- 빈 화면·오류 -->
+    <string name="review_all_done_title">모두 정리했습니다</string>
+    <string name="review_all_done_body">새 사진을 가져오면 다시 골라 드립니다</string>
+    <string name="review_go_home">홈으로</string>
+    <string name="review_go_blur">흐린 사진 보기 (%1$d장)</string>
+    <string name="review_go_burst">연사 보기 (%1$d그룹)</string>
+    <string name="review_go_video">영상 보기 (%1$d개)</string>
+    <string name="review_analyzing_title">사진을 분석하는 중입니다</string>
+    <string name="review_analyzing_body">%1$d/%2$d장 분석함 · 끝나는 대로 여기에 표시합니다</string>
+    <string name="review_error_title">목록을 불러오지 못했습니다</string>
+    <string name="review_error_cause">저장된 사진 정보를 읽는 중 문제가 생겼습니다</string>
+    <string name="review_error_fix">다시 시도하세요. 계속되면 앱을 다시 시작하세요</string>
+
+    <!-- 뷰어 하단 토글: 표시 전 = 버튼, 표시 후 = 상태 칩 + [해제] -->
+    <string name="review_viewer_mark">삭제 대상으로 표시</string>
+    <string name="review_viewer_unmark">해제</string>
+    <string name="review_viewer_unmark_desc">삭제 대상 해제</string>
+    <string name="review_viewer_marked">삭제 대상</string>
+
+    <!-- 그룹 화면 -->
+    <string name="review_group_title_burst">연사 %1$d장</string>
+    <string name="review_group_title_similar">비슷한 사진 %1$d장</string>
+    <string name="review_group_best">베스트</string>
+    <string name="review_group_relative_blur">흐림</string>
+    <string name="review_group_set_best">베스트로 지정</string>
+    <string name="review_group_mark_delete">삭제 대상</string>
+    <string name="review_group_keep_all">%1$d장 모두 유지</string>
+    <string name="review_group_keep_rest_hint">선택하지 않은 %1$d장은 유지합니다 · 휴지통을 비우면 공간이 생깁니다</string>
+    <string name="review_group_keep_all_hint">%1$d장을 모두 유지하고 그룹 정리를 마칩니다</string>
+    <string name="review_group_best_locked">베스트는 남깁니다</string>
+    <string name="review_group_missing_title">이 그룹은 이미 정리되었습니다</string>
+    <string name="review_group_missing_body">다른 화면에서 정리했거나 분석이 그룹을 다시 묶었습니다</string>
+    <string name="review_group_back">검토로 돌아가기</string>
+</resources>

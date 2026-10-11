@@ -1,0 +1,161 @@
+# 테스트 → 빌드 → (조건이 맞으면) 정식 릴리스 vX.Y.Z
+#
+# 릴리스 조건(모두 만족):
+#   - 기본 브랜치(main)로 push 또는 수동 실행 — 다른 브랜치의 테스트 빌드가 정식 릴리스가 되지 않게
+#   - 서명 키 Secrets(PHOTOCULL_KEYSTORE_BASE64, PHOTOCULL_KEYSTORE_PASSWORD)가 있음 — 같은 키여야 설치된 앱이 업데이트됨
+#   - version.properties의 versionName에 해당하는 태그 vX.Y.Z가 아직 없음(같은 버전으로 다시 릴리스하지 않음)
+#   - 기존 최신 v* 태그보다 버전이 높음
+# 릴리스 자산: PhotoCull.apk, PhotoCull.apk.sha256, PhotoCull.json(앱이 읽는 매니페스트, scripts/release_manifest.py)
+name: Android
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  # 릴리스 업로드 도중 끊기지 않게 취소하지 않고 순서대로 실행한다.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-37.0" "build-tools;36.1.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Decode signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PHOTOCULL_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PHOTOCULL_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PHOTOCULL_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64}" ] && [ -n "${KEYSTORE_PASSWORD}" ]; then
+            KEYSTORE="$RUNNER_TEMP/photocull.p12"
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n\t ' | base64 --decode > "$KEYSTORE"
+            if [ ! -s "$KEYSTORE" ]; then
+              echo "::error title=서명 키 오류::PHOTOCULL_KEYSTORE_BASE64를 디코딩할 수 없습니다. 키스토어 파일을 base64로 다시 인코딩해 등록하세요."
+              exit 1
+            fi
+            echo "keystore=$KEYSTORE" >> "$GITHUB_OUTPUT"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            # 별칭은 선택. 비어 있으면 Gradle 기본값(photocull)을 쓰도록 아예 넘기지 않는다.
+            if [ -n "${KEY_ALIAS}" ]; then echo "PHOTOCULL_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"; fi
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=릴리스 건너뜀::서명 키 Secrets(PHOTOCULL_KEYSTORE_BASE64, PHOTOCULL_KEYSTORE_PASSWORD)가 없어 디버그 키로 빌드만 합니다. 정식 릴리스(자동 업데이트)를 만들려면 저장소 Settings → Secrets and variables → Actions에 두 값을 등록하세요."
+          fi
+
+      - name: Test and build
+        env:
+          PHOTOCULL_KEYSTORE: ${{ steps.signing.outputs.keystore }}
+          PHOTOCULL_KEYSTORE_PASSWORD: ${{ secrets.PHOTOCULL_KEYSTORE_PASSWORD }}
+        run: ./gradlew --no-configuration-cache :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCull-${{ github.sha }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Decide release
+        id: release
+        env:
+          SIGNED: ${{ steps.signing.outputs.available }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*//p' version.properties | tr -d '[:space:]')"
+          CODE="$(python3 scripts/release_manifest.py code "$VERSION")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          publish=false
+          if [ "$SIGNED" != "true" ]; then
+            echo "서명 키가 없어 릴리스하지 않습니다."
+          elif [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::notice title=릴리스 건너뜀::정식 릴리스는 기본 브랜치($DEFAULT_BRANCH)에서만 만듭니다. 이 브랜치 빌드는 Actions 아티팩트로 받을 수 있습니다."
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "::notice title=릴리스 건너뜀::v$VERSION 태그가 이미 있습니다. 새 릴리스를 만들려면 version.properties의 versionName을 올리세요."
+          else
+            LATEST="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            if [ -n "$LATEST" ] && [ "$(python3 scripts/release_manifest.py code "${LATEST#v}")" -ge "$CODE" ]; then
+              echo "::warning title=릴리스 건너뜀::v$VERSION 이(가) 기존 최신 릴리스 $LATEST 보다 높지 않습니다. versionName을 올리세요."
+            else
+              publish=true
+            fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release assets
+        if: steps.release.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          # 서명이 깨졌으면 여기서 실패한다. 인증서 지문을 로그에 남겨 키가 바뀌지 않았는지 확인할 수 있게 한다.
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/certs.txt"
+          grep -E 'Signer #1 certificate (DN|SHA-256)' "$RUNNER_TEMP/certs.txt" || true
+          python3 scripts/release_manifest.py prepare \
+            --apk "$APK" \
+            --version "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dist dist \
+            --notes-out notes.md
+          ls -l dist
+
+      - name: Publish GitHub release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" dist/PhotoCull.apk dist/PhotoCull.apk.sha256 dist/PhotoCull.json \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file notes.md \
+            --latest
+          echo "### v$VERSION 릴리스 완료" >> "$GITHUB_STEP_SUMMARY"
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"

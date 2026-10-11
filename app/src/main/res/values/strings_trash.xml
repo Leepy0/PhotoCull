@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 휴지통 화면 -->
+    <string name="trash_title">휴지통</string>
+    <string name="trash_more">더보기</string>
+    <string name="trash_menu_delete_selected">선택한 %1$d개 영구 삭제</string>
+    <string name="trash_menu_empty">휴지통 비우기</string>
+
+    <!-- 머리말 -->
+    <string name="trash_summary">%1$d개 · %2$s</string>
+    <string name="trash_selected_count">%1$d개 선택</string>
+    <string name="trash_select_all">모두 선택</string>
+    <string name="trash_clear_selection">선택 해제</string>
+
+    <!-- 칸 -->
+    <string name="trash_days_left">%1$d일 남음</string>
+    <string name="trash_days_left_soon">곧 영구 삭제</string>
+    <string name="trash_raw_badge">RAW</string>
+    <string name="trash_open_item">%1$s 크게 보기</string>
+    <string name="trash_open_item_days">%1$s, %2$s</string>
+    <string name="trash_open_label">크게 보기</string>
+    <string name="trash_select_item">선택</string>
+    <string name="trash_unselect_item">선택 해제</string>
+    <string name="trash_selected_state">선택됨</string>
+
+    <!-- 하단 -->
+    <string name="trash_restore_selected">선택한 %1$d개 복원</string>
+    <string name="trash_working">처리 중</string>
+    <string name="trash_restore_hint">원래 폴더로 되돌리며, 갤러리에 다시 보입니다</string>
+    <string name="trash_info_retention">삭제한 사진은 %1$d일 동안 보관됩니다. 복원하려면 사진을 선택하세요</string>
+    <string name="trash_info_forever">삭제한 사진은 직접 비울 때까지 보관됩니다. 복원하려면 사진을 선택하세요</string>
+
+    <!-- 뷰어 -->
+    <string name="trash_viewer_restore">복원</string>
+    <string name="trash_viewer_days_left">%1$d일 뒤 영구 삭제</string>
+    <string name="trash_viewer_soon">24시간 안에 영구 삭제</string>
+    <string name="trash_viewer_forever">직접 비울 때까지 보관</string>
+
+    <!-- 영구 삭제 확인 -->
+    <string name="trash_confirm_title">%1$d개를 영구 삭제할까요?</string>
+    <string name="trash_confirm_body">%1$s를 확보합니다. 되돌릴 수 없습니다.</string>
+    <string name="trash_confirm_body_raw">%1$s를 확보합니다. RAW 파일도 함께 지워지며 되돌릴 수 없습니다.</string>
+    <string name="trash_confirm_action">%1$d개 영구 삭제</string>
+
+    <!-- 스낵바 -->
+    <string name="trash_snack_restored">%1$d개를 복원했습니다</string>
+    <string name="trash_snack_restored_partial">%1$d개를 복원했고 %2$d개는 복원하지 못했습니다</string>
+    <string name="trash_snack_restore_failed">복원하지 못했습니다. 파일 접근 권한과 저장공간을 확인하고 다시 시도하세요</string>
+    <string name="trash_snack_restore_failed_count">%1$d개를 복원하지 못했습니다</string>
+    <string name="trash_snack_restore_gone">%1$d개는 파일이 이미 지워져 목록에서 뺐습니다</string>
+    <string name="trash_snack_deleted">%1$d개를 영구 삭제했습니다 · %2$s 확보</string>
+    <string name="trash_snack_deleted_partial">%1$d개를 영구 삭제했고 %2$d개는 지우지 못했습니다</string>
+    <string name="trash_snack_delete_failed">영구 삭제하지 못했습니다. 파일 접근 권한을 확인하고 다시 시도하세요</string>
+
+    <!-- 상태 -->
+    <string name="trash_empty_title">휴지통이 비어 있습니다</string>
+    <string name="trash_empty_body">검토 화면에서 삭제한 사진은 %1$d일 동안 여기에 보관되고, 그 뒤 자동으로 영구 삭제됩니다</string>
+    <string name="trash_empty_body_forever">검토 화면에서 삭제한 사진은 직접 비울 때까지 여기에 보관됩니다</string>
+    <string name="trash_empty_action">검토로 이동</string>
+    <string name="trash_error_title">휴지통을 불러오지 못했습니다</string>
+    <string name="trash_error_cause">저장된 목록을 읽는 중 문제가 생겼습니다</string>
+    <string name="trash_error_fix">잠시 뒤 다시 시도하세요. 휴지통의 사진은 그대로 있습니다</string>
+</resources>
