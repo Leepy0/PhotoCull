@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 업데이트 시트: 확인 -->
+    <string name="update_checking_title">업데이트 확인 중</string>
+    <string name="update_current_version">현재 버전 v%1$s</string>
+    <string name="update_uptodate_title">최신 버전입니다</string>
+    <string name="update_uptodate_body">PhotoCull v%1$s · %2$s 확인</string>
+
+    <!-- 새 버전 -->
+    <string name="update_available_title">새 버전이 있습니다</string>
+    <string name="update_version_change">v%1$s → v%2$s</string>
+    <string name="update_meta_size">크기 %1$s</string>
+    <string name="update_meta_published">%1$s 게시</string>
+    <string name="update_notes_title">변경 내용</string>
+    <string name="update_notes_empty">변경 내용이 적혀 있지 않습니다</string>
+    <string name="update_action_download">업데이트 받기</string>
+
+    <!-- 받는 중 -->
+    <string name="update_downloading_title">업데이트 받는 중</string>
+    <string name="update_downloading_progress">%1$s / %2$s</string>
+    <string name="update_downloading_percent">%1$d%%</string>
+    <string name="update_downloading_waiting">연결하는 중</string>
+    <string name="update_downloading_background">이 창을 닫아도 계속 받습니다</string>
+    <string name="update_action_cancel_download">받기 취소</string>
+
+    <!-- 설치 -->
+    <string name="update_ready_title">설치 준비가 끝났습니다</string>
+    <string name="update_ready_verified">파일 검증 완료 (SHA-256 일치)</string>
+    <string name="update_ready_restart_note">설치하면 앱이 잠시 닫혔다가 새 버전으로 다시 시작됩니다</string>
+    <string name="update_action_install">설치</string>
+    <string name="update_permission_title">앱 설치 허용이 필요합니다</string>
+    <string name="update_permission_body">업데이트를 설치하려면 PhotoCull에 ‘출처를 알 수 없는 앱 설치’를 한 번 허용해야 합니다. 허용하고 돌아오면 바로 설치할 수 있습니다.</string>
+    <string name="update_action_allow_install">설치 허용하러 가기</string>
+    <string name="update_installing_title">설치 중</string>
+    <string name="update_installing_body">잠시 후 앱이 다시 시작됩니다</string>
+
+    <!-- 공통 -->
+    <string name="update_action_release_page">릴리스 페이지 열기</string>
+    <string name="update_action_ok">확인</string>
+    <string name="update_local_channel_note">이 빌드는 정식 서명 키로 만들지 않아 앱 안에서 설치하지 못할 수 있습니다</string>
+
+    <!-- 업데이트 직후 첫 실행. 버전 끝 숫자 발음에 따라 조사(으로/로)를 고른다 -->
+    <string name="update_just_updated_title_euro">v%1$s으로 업데이트되었습니다</string>
+    <string name="update_just_updated_title_ro">v%1$s로 업데이트되었습니다</string>
+
+    <!-- 비정상 종료 안내 -->
+    <string name="update_crash_title">앱이 예기치 않게 종료되었습니다</string>
+    <string name="update_crash_time">%1$s에 종료됨</string>
+    <string name="update_crash_body">오류 내용을 복사해 개발자에게 보내 주시면 원인을 찾아 고치는 데 도움이 됩니다.</string>
+    <string name="update_action_copy_crash">오류 내용 복사</string>
+    <string name="update_crash_copied">오류 내용을 복사했습니다</string>
+    <string name="update_crash_clip_label">PhotoCull 오류 보고서</string>
+
+    <!-- 실패: 첫 줄 = 무엇이, 둘째 줄 = 왜 -->
+    <string name="update_err_network">업데이트를 확인하지 못했습니다\n인터넷에 연결되어 있지 않거나 서버가 응답하지 않습니다.</string>
+    <string name="update_err_rate_limited">업데이트를 확인하지 못했습니다\nGitHub 요청 한도를 넘었습니다.</string>
+    <string name="update_err_server">업데이트를 확인하지 못했습니다\nGitHub 서버가 정상적으로 응답하지 않습니다.</string>
+    <string name="update_err_invalid_release">업데이트 정보를 읽을 수 없습니다\n릴리스 정보의 형식이 올바르지 않습니다.</string>
+    <string name="update_err_missing_sha">업데이트 파일을 검증할 수 없습니다\n릴리스에 SHA-256 검증 정보가 없어 받지 않았습니다.</string>
+    <string name="update_err_corrupt">다운로드한 파일이 손상되었습니다\n받은 파일이 릴리스의 SHA-256과 일치하지 않아 지웠습니다.</string>
+    <string name="update_err_space">저장 공간이 부족해 업데이트를 받을 수 없습니다</string>
+    <string name="update_err_download_network">업데이트를 받지 못했습니다\n받는 도중 연결이 끊겼습니다.</string>
+    <string name="update_err_download_http">업데이트 파일을 받을 수 없습니다\n서버에 파일이 없거나 릴리스가 바뀌었습니다.</string>
+    <string name="update_err_no_permission">앱 설치 권한이 없습니다\nPhotoCull의 ‘출처를 알 수 없는 앱 설치’가 꺼져 있습니다.</string>
+    <string name="update_err_importing">사진을 가져오는 중이라 설치할 수 없습니다\n설치하면 앱이 다시 시작되어 가져오기가 중단됩니다.</string>
+    <string name="update_err_install_start">설치를 시작하지 못했습니다\n시스템 설치기가 업데이트 파일을 받지 못했습니다.</string>
+    <string name="update_err_confirm_ui">설치 확인 화면을 열지 못했습니다</string>
+    <string name="update_err_signature">서명이 달라 업데이트할 수 없습니다\n설치된 앱과 새 버전의 서명 키가 다릅니다.</string>
+    <string name="update_err_conflict">설치된 앱과 충돌해 업데이트할 수 없습니다</string>
+    <string name="update_err_downgrade">설치된 버전보다 낮은 버전이라 설치할 수 없습니다</string>
+    <string name="update_err_incompatible">이 기기와 호환되지 않는 업데이트입니다</string>
+    <string name="update_err_storage">저장 공간이 부족해 설치하지 못했습니다</string>
+    <string name="update_err_aborted">설치를 취소했습니다</string>
+    <string name="update_err_blocked">기기 설정이 설치를 막았습니다</string>
+    <string name="update_err_invalid_apk">업데이트 파일이 올바르지 않습니다</string>
+    <string name="update_err_timeout">설치 시간이 초과되었습니다</string>
+    <string name="update_err_install_generic">업데이트를 설치하지 못했습니다</string>
+
+    <!-- 해결 방법 -->
+    <string name="update_fix_network">네트워크 연결을 확인하고 다시 시도하세요.</string>
+    <string name="update_fix_rate_limited">1시간쯤 뒤에 다시 시도하세요.</string>
+    <string name="update_fix_later">잠시 후 다시 시도하세요.</string>
+    <string name="update_fix_retry">다시 시도하세요.</string>
+    <string name="update_fix_release_page">릴리스 페이지에서 내용을 확인하세요.</string>
+    <string name="update_fix_space">%1$s 이상 공간을 확보한 뒤 다시 시도하세요.</string>
+    <string name="update_fix_no_permission">‘설치 허용하러 가기’에서 PhotoCull을 허용하세요.</string>
+    <string name="update_fix_importing">가져오기가 끝난 뒤 설치하세요.</string>
+    <string name="update_fix_install_generic">다시 시도하세요. 계속 실패하면 릴리스 페이지에서 직접 받아 설치하세요.</string>
+    <string name="update_fix_confirm_ui">앱을 연 상태에서 다시 시도하세요.</string>
+    <string name="update_fix_reinstall">기존 앱을 삭제하고 새 버전을 설치하세요. 가져온 사진은 지워지지 않습니다.</string>
+    <string name="update_fix_storage">저장 공간을 확보한 뒤 다시 시도하세요.</string>
+    <string name="update_fix_aborted">설치하려면 다시 시도하세요.</string>
+    <string name="update_fix_blocked">기기 관리자나 보안 설정을 확인하세요.</string>
+    <string name="update_fix_redownload">다시 받아 설치하세요.</string>
+
+    <!-- 알림 -->
+    <string name="update_notif_available_title">PhotoCull v%1$s 업데이트</string>
+    <string name="update_notif_available_text">탭하여 변경 내용을 보고 설치하세요</string>
+    <string name="update_notif_updated_title">PhotoCull v%1$s 업데이트 완료</string>
+    <string name="update_notif_updated_text">탭하여 앱을 여세요</string>
+</resources>
