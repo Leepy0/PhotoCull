@@ -33,7 +33,7 @@
 ### 릴리스 만드는 법 (개발자)
 
 1. `version.properties`의 `versionName`을 올립니다 (예: `0.1.0` → `0.1.1`).
-2. push하면 GitHub Actions가 테스트·빌드 후 `v0.1.1` 정식 릴리스를 만들고 `PhotoCull.apk`, `PhotoCull.apk.sha256`, `PhotoCull.json`(매니페스트)을 올립니다.
+2. main에 병합(push)하면 GitHub Actions가 테스트·빌드 후 `v0.1.1` 정식 릴리스를 만들고 `PhotoCull.apk`, `PhotoCull.apk.sha256`, `PhotoCull.json`(매니페스트)을 올립니다.
 3. 설치된 앱은 `releases/latest/download/PhotoCull.json`을 보고 업데이트합니다.
 
 ### 서명 키 (최초 1회 설정)
