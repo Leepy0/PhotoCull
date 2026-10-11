@@ -31,11 +31,11 @@ class UnreadableVideoException(path: String, cause: Throwable? = null) : IOExcep
  * 영상 길이·해상도·촬영 시각(DESIGN.md §4.5). 흐림 판정은 하지 않는다.
  * 길이를 못 읽으면 실패로 본다 — 길이 0으로 저장하면 '실수 촬영 후보'로 잘못 분류되기 때문.
  */
-class VideoAnalyzer(
+open class VideoAnalyzer(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
 ) {
     /** @param currentCapturedAt DB에 있는 촬영 시각(가져오기 때 파일 수정 시각 등). 메타 시각 검증에 쓴다. */
-    suspend fun analyze(path: String, currentCapturedAt: Long): VideoAnalysis = withContext(Dispatchers.IO) {
+    open suspend fun analyze(path: String, currentCapturedAt: Long): VideoAnalysis = withContext(Dispatchers.IO) {
         if (!File(path).isFile) throw FileNotFoundException(path)
         val retriever = MediaMetadataRetriever()
         try {

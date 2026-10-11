@@ -1,21 +1,40 @@
 package com.leepy0.photocull.data.settings
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+/**
+ * 설정 파일이 깨졌으면(전원 차단 중 쓰기 등) 기본값으로 바꿔 계속한다. 이게 없으면 읽을 때마다 예외가 나서
+ * 앱이 시작할 때마다 죽는다. 설정은 잃어도 되는 정보다.
+ */
+internal val settingsCorruptionHandler = ReplaceFileCorruptionHandler { e ->
+    Log.w("Settings", "settings file corrupted; resetting to defaults", e)
+    emptyPreferences()
+}
 
-class SettingsRepository(private val context: Context) {
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "settings",
+    corruptionHandler = settingsCorruptionHandler,
+)
+
+class SettingsRepository internal constructor(private val store: DataStore<Preferences>) {
+
+    constructor(context: Context) : this(context.dataStore)
 
     private object Keys {
         val destFolderName = stringPreferencesKey("dest_folder_name")
@@ -35,26 +54,36 @@ class SettingsRepository(private val context: Context) {
         val onboardingDone = booleanPreferencesKey("onboarding_done")
     }
 
-    val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
-        val d = AppSettings()
-        AppSettings(
-            destFolderName = p[Keys.destFolderName] ?: d.destFolderName,
-            monthlySubfolders = p[Keys.monthlySubfolders] ?: d.monthlySubfolders,
-            moveMode = p[Keys.moveMode] ?: d.moveMode,
-            cardNotification = p[Keys.cardNotification] ?: d.cardNotification,
-            blurSensitivity = p[Keys.blurSensitivity]?.let { runCatching { BlurSensitivity.valueOf(it) }.getOrNull() } ?: d.blurSensitivity,
-            burstGapMs = p[Keys.burstGapMs] ?: d.burstGapMs,
-            similarGapMs = p[Keys.similarGapMs] ?: d.similarGapMs,
-            similarMaxDistance = p[Keys.similarMaxDistance] ?: d.similarMaxDistance,
-            shortVideoMs = p[Keys.shortVideoMs] ?: d.shortVideoMs,
-            trashRetentionDays = p[Keys.trashRetentionDays] ?: d.trashRetentionDays,
-            themeMode = p[Keys.themeMode]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: d.themeMode,
-            autoUpdateCheck = p[Keys.autoUpdateCheck] ?: d.autoUpdateCheck,
-            lastUpdateCheckAt = p[Keys.lastUpdateCheckAt] ?: d.lastUpdateCheckAt,
-            lastRunVersionCode = p[Keys.lastRunVersionCode] ?: d.lastRunVersionCode,
-            onboardingDone = p[Keys.onboardingDone] ?: d.onboardingDone,
-        )
-    }
+    /** 읽기 오류(IOException)는 기본값으로 대신한다. 그 밖의 예외는 버그이므로 그대로 던진다. */
+    val settings: Flow<AppSettings> = store.data
+        .catch { e ->
+            if (e is IOException) {
+                Log.w("Settings", "cannot read settings; using defaults", e)
+                emit(emptyPreferences())
+            } else {
+                throw e
+            }
+        }
+        .map { p ->
+            val d = AppSettings()
+            AppSettings(
+                destFolderName = p[Keys.destFolderName] ?: d.destFolderName,
+                monthlySubfolders = p[Keys.monthlySubfolders] ?: d.monthlySubfolders,
+                moveMode = p[Keys.moveMode] ?: d.moveMode,
+                cardNotification = p[Keys.cardNotification] ?: d.cardNotification,
+                blurSensitivity = p[Keys.blurSensitivity]?.let { runCatching { BlurSensitivity.valueOf(it) }.getOrNull() } ?: d.blurSensitivity,
+                burstGapMs = p[Keys.burstGapMs] ?: d.burstGapMs,
+                similarGapMs = p[Keys.similarGapMs] ?: d.similarGapMs,
+                similarMaxDistance = p[Keys.similarMaxDistance] ?: d.similarMaxDistance,
+                shortVideoMs = p[Keys.shortVideoMs] ?: d.shortVideoMs,
+                trashRetentionDays = p[Keys.trashRetentionDays] ?: d.trashRetentionDays,
+                themeMode = p[Keys.themeMode]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: d.themeMode,
+                autoUpdateCheck = p[Keys.autoUpdateCheck] ?: d.autoUpdateCheck,
+                lastUpdateCheckAt = p[Keys.lastUpdateCheckAt] ?: d.lastUpdateCheckAt,
+                lastRunVersionCode = p[Keys.lastRunVersionCode] ?: d.lastRunVersionCode,
+                onboardingDone = p[Keys.onboardingDone] ?: d.onboardingDone,
+            )
+        }
 
     suspend fun current(): AppSettings = settings.first()
 
@@ -75,6 +104,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setOnboardingDone(v: Boolean) = edit { it[Keys.onboardingDone] = v }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
-        context.dataStore.edit { block(it) }
+        store.edit { block(it) }
     }
 }

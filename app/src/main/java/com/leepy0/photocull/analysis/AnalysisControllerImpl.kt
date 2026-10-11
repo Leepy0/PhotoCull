@@ -2,8 +2,10 @@ package com.leepy0.photocull.analysis
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.room.withTransaction
 import com.leepy0.photocull.data.db.AppDatabase
+import com.leepy0.photocull.data.db.GroupingDiff
 import com.leepy0.photocull.data.db.MediaGroupEntity
 import com.leepy0.photocull.data.db.MediaItemEntity
 import com.leepy0.photocull.data.db.ReviewState
@@ -11,6 +13,8 @@ import com.leepy0.photocull.data.settings.AppSettings
 import com.leepy0.photocull.data.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
@@ -39,11 +43,16 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * - [kick]: 신호만 보낸다(합쳐짐). 작업자는 분석 대기 사진을 동시 2장씩 처리하고, 이어서 영상, 그다음 그룹을 다시 계산한다.
  *   처리하는 동안 새 항목이 들어오면 이어서 처리한다.
- * - 그룹 계산은 별도 코루틴이 맡아, 긴 분석 중에도 설정 변경([regroup])이 바로 반영된다.
- * - 항목 하나의 실패(손상 파일, 메모리 부족 등)는 그 항목만 analysisFailed로 기록하고 계속한다. 프로세스를 죽이지 않는다.
+ * - 그룹 계산은 별도 코루틴이 맡는다. 분석 중에는 [regroupIntervalMs]에 한 번까지만(가져오는 동안 사진마다 돌지 않게),
+ *   분석이 쉬면 바로 계산한다. 계산은 트랜잭션 밖에서 하고, 바뀐 그룹·행만 짧은 트랜잭션으로 쓴다.
+ * - 항목 하나의 실패(손상 파일, 메모리 부족, [itemTimeoutMs] 초과 등)는 그 항목만 analysisFailed로 기록하고 계속한다. 프로세스를 죽이지 않는다.
  * - DB 쓰기는 방금 읽은 행에 분석 필드만 덮어써서, 그 사이 바뀐 검토 상태(휴지통 이동 등)를 되돌리지 않는다.
  *
  * @param lingerMs 일이 끝난 뒤 '분석 중' 표시를 유지하며 다음 신호를 기다리는 시간. 가져오는 동안 파일마다 표시가 깜박이지 않게 한다.
+ * @param regroupIntervalMs 분석 중 그룹 재계산 최소 간격
+ * @param itemTimeoutMs 항목 하나(디코드·메타데이터 읽기) 시간 제한. 멈춘 파일 하나가 작업자 전체를 세우지 않게 한다.
+ * @param progressResetIdleMs 이만큼 쉬었다가 다시 시작해야 진행 수(done)를 0부터 센다. 가져오는 중 큰 영상을 복사하느라
+ *   잠깐 쉬어도 "분석 n/m"이 처음부터 다시 시작하지 않게 한다(4GB 영상 복사 ≈ 45초).
  */
 class AnalysisControllerImpl(
     @Suppress("UNUSED_PARAMETER") context: Context,
@@ -54,9 +63,19 @@ class AnalysisControllerImpl(
     private val videoAnalyzer: VideoAnalyzer = VideoAnalyzer(),
     private val lingerMs: Long = 1_500,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val regroupIntervalMs: Long = 5_000,
+    private val itemTimeoutMs: Long = 60_000,
+    private val progressResetIdleMs: Long = 60_000,
 ) : AnalysisController {
 
     private val mediaDao get() = db.mediaDao()
+
+    /** 항목 분석을 돌리는 범위. 시간 제한을 넘긴(멈춘) 작업은 기다리지 않고 버리는데, 그 실패가 앱 범위로 번지지 않게 감독 작업 아래에 둔다. */
+    private val itemScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+
+    /** 테스트용: 그룹 계산이 끝나고 쓰기 직전에 불린다(그 사이 사용자 동작을 흉내 낸다). */
+    @VisibleForTesting
+    internal var beforeRegroupWrite: (suspend () -> Unit)? = null
 
     private val _status = MutableStateFlow(AnalysisStatus())
     override val status: StateFlow<AnalysisStatus> = _status.asStateFlow()
@@ -76,6 +95,11 @@ class AnalysisControllerImpl(
     @Volatile private var busy = false
     private var done = 0
     private var lastPending = 0
+    /** 마지막으로 쉬기 시작한 때(단조 시계 ms). null = 아직 한 번도 일하지 않음 */
+    private var idleSince: Long? = null
+
+    /** 분석 작업자가 쉬는 중(그룹 계산 간격 조절용) */
+    private val workerIdle = MutableStateFlow(true)
 
     init {
         scope.launch { workLoop() }
@@ -125,7 +149,7 @@ class AnalysisControllerImpl(
                 } catch (t: Throwable) {
                     Log.w(TAG, "analysis pass failed", t)
                 }
-                // 패스가 끝날 때마다 그룹을 다시 계산(바뀐 게 없으면 DB는 그대로 둔다)
+                // 패스가 끝날 때마다 그룹 재계산 요청(분석 중에는 간격을 두고 합쳐서, 쉬면 바로 계산. 바뀐 게 없으면 DB는 그대로)
                 regroup()
                 workCompleted.update { maxOf(it, target) }
                 val more = if (busy && lingerMs > 0) {
@@ -141,7 +165,6 @@ class AnalysisControllerImpl(
     /** 대기 중인 사진 → 영상 순으로 비운다. 처리하는 동안 새로 들어온 항목도 이어서 처리한다. */
     private suspend fun runPass() {
         val attempted = HashSet<Long>()
-        var lastRegroupAt = clock()
         while (true) {
             var progressed = false
 
@@ -155,11 +178,8 @@ class AnalysisControllerImpl(
                     val outOfMemory = analyzePhotos(chunk, PHOTO_PARALLELISM, lastChance = false)
                     // 메모리 부족은 동시 처리 때문일 수 있으니 한 장씩 한 번 더 시도
                     if (outOfMemory.isNotEmpty()) analyzePhotos(outOfMemory, 1, lastChance = true)
-                    // 긴 분석 중에도 그룹이 주기적으로 보이게
-                    if (clock() - lastRegroupAt >= MID_PASS_REGROUP_MS) {
-                        regroup()
-                        lastRegroupAt = clock()
-                    }
+                    // 긴 분석 중에도 그룹이 주기적으로 보이게(그룹 계산 쪽이 간격을 조절한다)
+                    regroup()
                 }
             }
 
@@ -191,7 +211,7 @@ class AnalysisControllerImpl(
     private suspend fun analyzePhoto(item: MediaItemEntity, lastChance: Boolean): Boolean {
         val path = item.dstPath ?: return true
         val result = try {
-            imageAnalyzer.analyze(path)
+            withItemTimeout(item) { imageAnalyzer.analyze(path) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: OutOfMemoryError) {
@@ -230,7 +250,7 @@ class AnalysisControllerImpl(
     private suspend fun analyzeVideo(item: MediaItemEntity) {
         val path = item.dstPath ?: return
         val result = try {
-            videoAnalyzer.analyze(path, item.capturedAt)
+            withItemTimeout(item) { videoAnalyzer.analyze(path, item.capturedAt) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: FileNotFoundException) {
@@ -251,6 +271,20 @@ class AnalysisControllerImpl(
                 updatedAt = clock(),
             )
         }
+    }
+
+    /**
+     * [block]을 [itemTimeoutMs] 안에서 실행한다. 디코더·MediaMetadataRetriever의 네이티브 호출은 취소로 끊을 수 없어서,
+     * 별도 작업으로 돌리고 시간이 지나면 기다리기를 그만둔다(그 작업은 버린다). 초과하면 [ItemTimeoutException].
+     */
+    private suspend fun <T : Any> withItemTimeout(item: MediaItemEntity, block: suspend () -> T): T {
+        val work = itemScope.async { block() }
+        val result = withTimeoutOrNull(itemTimeoutMs) { work.await() }
+        if (result == null) {
+            work.cancel()
+            throw ItemTimeoutException(item.fileName, itemTimeoutMs)
+        }
+        return result
     }
 
     /**
@@ -290,7 +324,10 @@ class AnalysisControllerImpl(
         progressLock.withLock {
             if (!busy) {
                 busy = true
-                done = 0
+                workerIdle.value = false
+                // 잠깐 쉬었다 다시 시작한 것(가져오는 중 큰 영상 복사 등)이면 이어서 센다
+                val since = idleSince
+                if (since == null || elapsedMs() - since >= progressResetIdleMs) done = 0
             }
             publishLocked()
         }
@@ -300,8 +337,10 @@ class AnalysisControllerImpl(
         progressLock.withLock {
             if (!busy) return
             busy = false
+            idleSince = elapsedMs()
             publishLocked()
         }
+        workerIdle.value = true
     }
 
     /** total = 처리한 수 + 아직 남은 수(DB). 쓰기와 같은 잠금 안에서 세므로 둘이 어긋나지 않는다. */
@@ -322,7 +361,15 @@ class AnalysisControllerImpl(
     // =====================================================================================
 
     private suspend fun regroupLoop() {
+        var lastRunAt: Long? = null
         for (signal in regroupSignals) {
+            // 분석 중에는 마지막 계산 뒤 regroupIntervalMs까지 신호를 모은다. 그 전에 분석이 쉬면 바로 계산한다.
+            val last = lastRunAt
+            if (last != null && !workerIdle.value) {
+                val wait = last + regroupIntervalMs - elapsedMs()
+                if (wait > 0) withTimeoutOrNull(wait) { workerIdle.first { it } }
+            }
+            regroupSignals.tryReceive() // 기다리는 동안 온 신호는 이번 계산에 합친다
             val target = regroupRequested.get()
             try {
                 regroupNow()
@@ -331,13 +378,17 @@ class AnalysisControllerImpl(
             } catch (t: Throwable) {
                 Log.w(TAG, "regroup failed", t)
             }
+            lastRunAt = elapsedMs()
             regroupCompleted.update { maxOf(it, target) }
         }
     }
 
     /**
-     * 현재 설정으로 그룹 전체를 다시 계산해 교체한다. 읽기부터 쓰기까지 한 트랜잭션이라,
-     * 그 사이 사용자가 베스트를 고정해도 잃어버리지 않는다. 결과가 지금과 같으면 쓰지 않는다(화면 깜박임 방지).
+     * 현재 설정으로 그룹 전체를 다시 계산하고 바뀐 부분만 쓴다.
+     * - 읽기·계산은 트랜잭션 밖: 가져오기의 DB 쓰기를 막지 않는다.
+     * - 쓰기는 짧은 트랜잭션 하나. 그 안에서 그룹을 다시 읽어, 계산하는 사이 사용자가 고정한 베스트가 있으면
+     *   그것으로 다시 계산한다(고정을 잃지 않는다).
+     * - 바뀐 게 없으면 쓰지 않는다(화면 깜박임·불필요한 Flow 재조회 방지).
      */
     private suspend fun regroupNow() {
         val s = try {
@@ -347,43 +398,38 @@ class AnalysisControllerImpl(
         } catch (t: Throwable) {
             AppSettings()
         }
-        db.withTransaction {
-            val rows = mediaDao.groupingCandidates()
-            val existing = db.groupDao().all()
-            val pinned = existing.filter { it.bestPinned }.map { it.bestItemId }.toSet()
-            val planned = Grouping.group(
-                rows.map { it.toGroupInput() },
-                burstGapMs = s.burstGapMs,
-                similarGapMs = s.similarGapMs,
-                maxDistance = s.similarMaxDistance,
-                pinnedBestIds = pinned,
-            )
-            val previousGroupOf = HashMap<Long, Long>()
-            rows.forEach { r -> r.groupId?.let { previousGroupOf[r.id] = it } }
-            val ids = Grouping.assignIds(planned, previousGroupOf, existing.map { it.id }.toSet())
-            val entities = planned.mapIndexed { i, g ->
-                MediaGroupEntity(
-                    id = ids[i] ?: 0,
-                    kind = g.kind,
-                    bestItemId = g.bestId,
-                    bestPinned = g.bestPinned,
-                    count = g.memberIds.size,
-                    startAt = g.startAt,
-                    endAt = g.endAt,
-                )
-            }
+        val inputs = mediaDao.groupingCandidates().map { it.toGroupInput() }
+        val currentGroupOf = HashMap<Long, Long>()
+        db.groupingDao().groupRefs().forEach { currentGroupOf[it.id] = it.groupId }
+        val existing = db.groupDao().all()
+        val diff = plan(inputs, existing, currentGroupOf, s)
+        if (diff.isEmpty) return
 
-            val unchanged = entities.none { it.id == 0L } &&
-                entities.toSet() == existing.toSet() &&
-                run {
-                    val plannedGroupOf = HashMap<Long, Long>()
-                    entities.forEachIndexed { i, e -> planned[i].memberIds.forEach { plannedGroupOf[it] = e.id } }
-                    rows.all { it.groupId == plannedGroupOf[it.id] }
-                }
-            if (!unchanged) {
-                db.groupingDao().replaceAll(entities.mapIndexed { i, e -> e to planned[i].memberIds })
-            }
+        beforeRegroupWrite?.invoke()
+        db.withTransaction {
+            val fresh = db.groupDao().all()
+            val finalDiff = if (fresh.toSet() == existing.toSet()) diff else plan(inputs, fresh, currentGroupOf, s)
+            if (!finalDiff.isEmpty) db.groupingDao().applyDiff(finalDiff)
         }
+    }
+
+    /** 그룹 계산(메모리 안 순수 계산) → 지금 상태와의 차이 */
+    private fun plan(
+        inputs: List<GroupInput>,
+        existing: List<MediaGroupEntity>,
+        currentGroupOf: Map<Long, Long>,
+        s: AppSettings,
+    ): GroupingDiff {
+        val pinned = existing.filter { it.bestPinned }.mapTo(HashSet()) { it.bestItemId }
+        val planned = Grouping.group(
+            inputs,
+            burstGapMs = s.burstGapMs,
+            similarGapMs = s.similarGapMs,
+            maxDistance = s.similarMaxDistance,
+            pinnedBestIds = pinned,
+        )
+        val ids = Grouping.assignIds(planned, currentGroupOf, existing.mapTo(HashSet()) { it.id })
+        return Grouping.diff(planned, ids, existing, currentGroupOf)
     }
 
     private data class GroupingParams(val burstGapMs: Long, val similarGapMs: Long, val maxDistance: Int)
@@ -392,7 +438,12 @@ class AnalysisControllerImpl(
         private const val TAG = "Analysis"
         private const val PHOTO_PARALLELISM = 2
         private const val CHUNK_SIZE = 16
-        private const val MID_PASS_REGROUP_MS = 15_000L
         private val ACTIVE_STATES = setOf(ReviewState.PENDING, ReviewState.KEPT)
+
+        /** 간격 계산용 단조 시계(벽시계 변경에 영향받지 않는다) */
+        private fun elapsedMs(): Long = System.nanoTime() / 1_000_000
     }
 }
+
+/** 항목 하나의 분석이 시간 제한을 넘김(멈춘 디코더 등) */
+class ItemTimeoutException(fileName: String, timeoutMs: Long) : Exception("analysis timed out after $timeoutMs ms: $fileName")
