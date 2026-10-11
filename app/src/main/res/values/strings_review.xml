@@ -28,6 +28,8 @@
     <string name="review_snack_trashed_videos">%1$d개를 휴지통으로 옮겼습니다</string>
     <string name="review_snack_trashed_partial_photos">%1$d장을 옮겼고 %2$d장은 옮기지 못했습니다</string>
     <string name="review_snack_trashed_partial_videos">%1$d개를 옮겼고 %2$d개는 옮기지 못했습니다</string>
+    <string name="review_snack_still_importing">아직 가져오는 중인 파일은 지울 수 없습니다. 가져오기가 끝난 뒤 다시 시도하세요</string>
+    <string name="review_snack_already_gone">%1$d개는 파일이 이미 지워져 목록에서 뺐습니다</string>
     <string name="review_snack_trash_failed">휴지통으로 옮기지 못했습니다. 파일 접근 권한을 확인하고 다시 시도하세요</string>
     <string name="review_snack_kept_photos">%1$d장을 유지했습니다</string>
     <string name="review_snack_kept_videos">%1$d개를 유지했습니다</string>

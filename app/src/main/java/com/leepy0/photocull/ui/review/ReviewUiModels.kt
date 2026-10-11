@@ -39,6 +39,12 @@ sealed interface ReviewMessage {
     /** 하나도 옮기지 못함 */
     data object TrashFailed : ReviewMessage
 
+    /** 아직 가져오는 중이라 옮기지 않음 */
+    data object StillImporting : ReviewMessage
+
+    /** 폰에서 이미 지워져 있어 목록에서만 뺌(실행 취소 없음) */
+    data class AlreadyGone(val count: Int) : ReviewMessage
+
     /** '남기기'로 표시. [ids]를 다시 검토 대기로 돌려 실행 취소 */
     data class Kept(
         val ids: List<Long>,
@@ -63,7 +69,11 @@ sealed interface ReviewMessage {
             regroupOnUndo: Boolean = false,
         ): ReviewMessage =
             if (result.movedCount <= 0) {
-                TrashFailed
+                when {
+                    result.importingCount > 0 && result.importingCount >= result.failedCount -> StillImporting
+                    result.failedCount == 0 && result.goneCount > 0 -> AlreadyGone(result.goneCount)
+                    else -> TrashFailed
+                }
             } else {
                 Trashed(
                     moved = result.movedCount,

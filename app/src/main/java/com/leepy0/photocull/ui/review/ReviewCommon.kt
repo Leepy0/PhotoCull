@@ -238,6 +238,8 @@ fun ReviewMessage.text(context: Context): String = when (this) {
         else -> context.getString(R.string.review_snack_trashed_photos, moved)
     }
     ReviewMessage.TrashFailed -> context.getString(R.string.review_snack_trash_failed)
+    ReviewMessage.StillImporting -> context.getString(R.string.review_snack_still_importing)
+    is ReviewMessage.AlreadyGone -> context.getString(R.string.review_snack_already_gone, count)
     is ReviewMessage.Kept ->
         if (unit == CountUnit.VIDEO) context.getString(R.string.review_snack_kept_videos, ids.size)
         else context.getString(R.string.review_snack_kept_photos, ids.size)
