@@ -7,6 +7,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.leepy0.photocull.analysis.AnalysisController
 import com.leepy0.photocull.analysis.AnalysisStatus
+import com.leepy0.photocull.data.db.ImportSessionEntity
+import com.leepy0.photocull.data.db.ImportStatus
+import com.leepy0.photocull.data.db.MediaItemEntity
+import com.leepy0.photocull.data.db.MediaType
 import com.leepy0.photocull.data.settings.SettingsRepository
 import com.leepy0.photocull.storage.CardMonitor
 import com.leepy0.photocull.storage.CardSource
@@ -202,6 +206,58 @@ class ImportControllerTest {
         outcome as RunOutcome.Done
         assertThat(controller.state.value).isEqualTo(ImportState.Failed(ImportError.CardRemoved(1, 3)))
         h.assertSafetyInvariant()
+    }
+
+    @Test fun startupRecoveryKicksAnalysisForRecoveredPhotos() {
+        // 이름 변경 뒤 VERIFIED 기록 전에 종료된 사진: 복구되면 다음 가져오기를 기다리지 않고 바로 분석
+        val bytes = randomBytes(9, 5_000)
+        val final = File(h.dest.apply { mkdirs() }, "IMG_0009.JPG").apply { writeBytes(bytes) }
+        val id = runBlocking {
+            val sid = h.ledger.insertSession(ImportSessionEntity(volumeId = h.volume.id, volumeLabel = "x", startedAt = 1, moveMode = true))
+            h.ledger.insertItem(
+                MediaItemEntity(
+                    sessionId = sid, volumeId = h.volume.id, srcRelPath = "DCIM/100CANON/IMG_0009.JPG", srcLocation = "x",
+                    srcSize = bytes.size.toLong(), srcLastModified = DEFAULT_MTIME, unitKey = "$sid:DCIM/100CANON/IMG_0009",
+                    isPrimary = true, type = MediaType.PHOTO, mimeType = "image/jpeg", dstPath = final.path,
+                    fileName = final.name, sha256 = sha256(bytes), importStatus = ImportStatus.COPIED, capturedAt = DEFAULT_MTIME,
+                ),
+            )
+        }
+        analysis.kicks = 0
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val restarted = ImportControllerImpl(context, scope, h.db, SettingsRepository(context), monitor, analysis, env)
+        runBlocking { restarted.startupRecovery.join() }
+        assertThat(runBlocking { h.db.mediaDao().get(id)!!.importStatus }).isEqualTo(ImportStatus.VERIFIED)
+        assertThat(analysis.kicks).isEqualTo(1)
+    }
+
+    @Test fun serviceStoppingWithoutRunningImportDoesNotLeaveRunning() {
+        connect()
+        controller.scan()
+        awaitState { it is ImportState.Ready }
+        controller.start(moveMode = true)
+        assertThat(controller.state.value).isInstanceOf(ImportState.Running::class.java)
+        // 서비스가 이 요청을 맡지 않고 멈춤 → 화면이 Running에 갇히지 않는다(취소·초기화·스캔 가능)
+        controller.onServiceStopped()
+        assertThat(controller.state.value).isEqualTo(ImportState.Failed(ImportError.Unexpected("service")))
+        assertThat(controller.isImporting).isFalse()
+        controller.reset()
+        assertThat(controller.state.value).isEqualTo(ImportState.Idle)
+    }
+
+    @Test fun serviceStoppedDuringImportKeepsRunningState() {
+        connect()
+        h.card.chunkSize = 1024
+        var during: ImportState? = null
+        h.card.onRead = { _, _ ->
+            if (during == null) {
+                controller.onServiceStopped()
+                during = controller.state.value
+            }
+        }
+        runBlocking { controller.runImport(moveModeOverride = false) }
+        assertThat(during).isInstanceOf(ImportState.Running::class.java)
+        assertThat(controller.state.value).isInstanceOf(ImportState.Finished::class.java)
     }
 
     @Test fun secondRunWhileImportingIsRejected() {

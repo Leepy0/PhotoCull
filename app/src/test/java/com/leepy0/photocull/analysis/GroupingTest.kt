@@ -2,6 +2,7 @@ package com.leepy0.photocull.analysis
 
 import com.google.common.truth.Truth.assertThat
 import com.leepy0.photocull.data.db.GroupKind
+import com.leepy0.photocull.data.db.MediaGroupEntity
 import org.junit.Test
 
 class GroupingTest {
@@ -180,5 +181,56 @@ class GroupingTest {
     fun assignIds_ignoresStaleIdsOfDeletedGroups() {
         val ids = Grouping.assignIds(listOf(planned(1, 2)), mapOf(1L to 7L, 2L to 7L), existingGroupIds = emptySet())
         assertThat(ids).containsExactly(null)
+    }
+
+    // ---- 바뀐 부분만 쓰기(diff) ----
+
+    private fun entity(id: Long, g: PlannedGroup) =
+        MediaGroupEntity(id, g.kind, g.bestId, g.bestPinned, g.memberIds.size, g.startAt, g.endAt)
+
+    @Test
+    fun diff_unchangedStateIsEmpty() {
+        val g1 = planned(1, 2, 3)
+        val g2 = planned(4, 5)
+        val existing = listOf(entity(100, g1), entity(101, g2))
+        val current = mapOf(1L to 100L, 2L to 100L, 3L to 100L, 4L to 101L, 5L to 101L)
+        val diff = Grouping.diff(listOf(g1, g2), listOf(100L, 101L), existing, current)
+        assertThat(diff.isEmpty).isTrue()
+    }
+
+    @Test
+    fun diff_onlyTouchesChangedGroupsAndRows() {
+        // 그룹 100에 6이 새로 합류, 그룹 101은 그대로, 그룹 102는 사라짐(멤버 7·8은 그룹에서 빠짐), 새 그룹 9+10
+        val old100 = planned(1, 2, 3)
+        val g101 = planned(4, 5)
+        val old102 = planned(7, 8)
+        val existing = listOf(entity(100, old100), entity(101, g101), entity(102, old102))
+        val current = mapOf(1L to 100L, 2L to 100L, 3L to 100L, 4L to 101L, 5L to 101L, 7L to 102L, 8L to 102L, 11L to 100L)
+
+        val new100 = planned(1, 2, 3, 6)
+        val fresh = planned(9, 10)
+        val diff = Grouping.diff(listOf(new100, g101, fresh), listOf(100L, 101L, null), existing, current)
+
+        assertThat(diff.updates).containsExactly(entity(100, new100))
+        assertThat(diff.moves).containsExactly(100L, listOf(6L))
+        assertThat(diff.deleteGroupIds).containsExactly(102L)
+        // 사라진 그룹의 멤버와, 계획에 없는 낡은 소속(11: 휴지통으로 간 사진 등)은 비운다
+        assertThat(diff.clearItemIds).containsExactly(7L, 8L, 11L)
+        assertThat(diff.inserts).hasSize(1)
+        assertThat(diff.inserts.single().first.id).isEqualTo(0L)
+        assertThat(diff.inserts.single().second).containsExactly(9L, 10L).inOrder()
+    }
+
+    @Test
+    fun diff_bestChangeIsAnUpdateWithoutRowWrites() {
+        val before = planned(1, 2, 3)
+        val after = before.copy(bestId = 2, bestPinned = true)
+        val current = mapOf(1L to 100L, 2L to 100L, 3L to 100L)
+        val diff = Grouping.diff(listOf(after), listOf(100L), listOf(entity(100, before)), current)
+        assertThat(diff.updates).containsExactly(entity(100, after))
+        assertThat(diff.moves).isEmpty()
+        assertThat(diff.clearItemIds).isEmpty()
+        assertThat(diff.inserts).isEmpty()
+        assertThat(diff.deleteGroupIds).isEmpty()
     }
 }

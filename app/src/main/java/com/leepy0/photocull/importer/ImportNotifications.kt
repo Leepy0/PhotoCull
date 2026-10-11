@@ -79,7 +79,10 @@ class ImportNotifications(context: Context) {
 
     fun postProgress(notification: Notification) = post(NotificationChannels.ID_IMPORT_PROGRESS, notification)
 
-    /** 결과: "가져오기 완료 · 324개 이동" + "흐림 12장 · 연사 8그룹" (탭 → 검토, 실패가 있으면 가져오기 결과) */
+    /**
+     * 결과: "가져오기 완료 · 324개 이동" + "검토할 사진: 흐림 12장 · 연사 8그룹" (탭 → 검토, 실패가 있으면 가져오기 결과).
+     * [counts]는 이번 가져오기만이 아니라 검토 대기 전체이므로 문구도 "검토할 사진"으로 쓴다.
+     */
     fun postResult(result: ImportResult, counts: ReviewCounts?) {
         val saved = Format.count(result.savedCount)
         val title = when {

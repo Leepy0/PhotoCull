@@ -38,9 +38,9 @@ data class GroupCard(
     val members: List<MediaCard>,
     val bestId: Long,
     val bestPinned: Boolean,
-    /** 그룹 최고 점수의 60% 미만인 멤버 */
+    /** 그룹 최고 점수의 60% 미만인 멤버(고정한 베스트도 해당되면 포함) */
     val relativeBlurIds: Set<Long>,
-    /** 베스트조차 흐림 임계값 미만 */
+    /** 그룹 최고 점수조차 흐림 임계값 미만(전체가 흐림) */
     val allBlurry: Boolean,
 ) {
     val best: MediaCard get() = members.firstOrNull { it.id == bestId } ?: members.first()

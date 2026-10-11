@@ -1,7 +1,9 @@
 package com.leepy0.photocull.analysis
 
 import com.leepy0.photocull.data.db.GroupKind
+import com.leepy0.photocull.data.db.GroupingDiff
 import com.leepy0.photocull.data.db.GroupingRow
+import com.leepy0.photocull.data.db.MediaGroupEntity
 
 /** 그룹 계산 입력 1장(대표 사진) */
 data class GroupInput(
@@ -136,5 +138,56 @@ object Grouping {
             used += c.oldId
         }
         return assigned.toList()
+    }
+
+    /**
+     * 계산 결과([groups] + [assignedIds]의 id)와 지금 DB 상태의 차이. 적용하면 결과가 [GroupingDao.replaceAll]과 같아진다:
+     * 계획된 그룹만 남고, 그 멤버만 groupId를 가지며, 나머지 행(휴지통으로 간 사진 등)은 groupId가 비워진다.
+     *
+     * @param assignedIds [assignIds] 결과(기존 그룹 id 또는 null = 새 그룹)
+     * @param existing 지금 있는 그룹
+     * @param currentGroupOf 지금 groupId가 있는 모든 행: 사진 id → 그룹 id
+     */
+    fun diff(
+        groups: List<PlannedGroup>,
+        assignedIds: List<Long?>,
+        existing: List<MediaGroupEntity>,
+        currentGroupOf: Map<Long, Long>,
+    ): GroupingDiff {
+        require(groups.size == assignedIds.size)
+        val existingById = existing.associateBy { it.id }
+        val inserts = ArrayList<Pair<MediaGroupEntity, List<Long>>>()
+        val updates = ArrayList<MediaGroupEntity>()
+        val moves = LinkedHashMap<Long, List<Long>>()
+        val keptGroupIds = HashSet<Long>()
+        val plannedMembers = HashSet<Long>()
+        groups.forEachIndexed { i, g ->
+            plannedMembers += g.memberIds
+            val id = assignedIds[i]?.takeIf { it in existingById }
+            val entity = MediaGroupEntity(
+                id = id ?: 0,
+                kind = g.kind,
+                bestItemId = g.bestId,
+                bestPinned = g.bestPinned,
+                count = g.memberIds.size,
+                startAt = g.startAt,
+                endAt = g.endAt,
+            )
+            if (id == null) {
+                inserts += entity to g.memberIds
+            } else {
+                keptGroupIds += id
+                if (existingById[id] != entity) updates += entity
+                val moving = g.memberIds.filter { currentGroupOf[it] != id }
+                if (moving.isNotEmpty()) moves[id] = moving
+            }
+        }
+        return GroupingDiff(
+            inserts = inserts,
+            updates = updates,
+            deleteGroupIds = existing.map { it.id }.filter { it !in keptGroupIds },
+            moves = moves,
+            clearItemIds = currentGroupOf.keys.filter { it !in plannedMembers }.sorted(),
+        )
     }
 }
