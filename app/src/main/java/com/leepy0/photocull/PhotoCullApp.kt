@@ -25,6 +25,8 @@ class PhotoCullApp : Application(), SingletonImageLoader.Factory {
         container.appScope.launch {
             // 강제 종료로 RUNNING에 남은 세션 정리, 보관 기간 지난 휴지통 비우기, 남은 분석 이어서
             runCatching { container.db.sessionDao().markRunningInterrupted(System.currentTimeMillis()) }
+            // 처음 만들 때 지난 실행에서 남은 *.photocull.part와 멈춘 기록을 정리한다
+            container.importController
             runCatching { container.trash.purgeExpired() }
             container.analysis.kick()
         }
