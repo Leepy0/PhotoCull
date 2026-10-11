@@ -1,8 +1,8 @@
 package com.leepy0.photocull.ui.settings
 
-import com.leepy0.photocull.data.review.MediaCard
 import com.leepy0.photocull.data.settings.AppSettings
 import com.leepy0.photocull.storage.StoragePaths
+import com.leepy0.photocull.trash.PurgePreview
 import com.leepy0.photocull.update.UpdateState
 import java.util.Locale
 
@@ -71,16 +71,27 @@ object FolderNameRules {
 
 /** 보관 기간 변경 규칙 */
 object RetentionRules {
-    private const val DAY_MS = 86_400_000L
-
     /** 더 짧아지는가(무기한 → 기간, 긴 기간 → 짧은 기간) */
     fun isShortening(current: Int, next: Int): Boolean = next > 0 && (current <= 0 || next < current)
 
-    /** 새 기간이면 바로 영구 삭제될 항목(TrashManager.purgeExpired와 같은 기준) */
-    fun expiring(items: List<MediaCard>, days: Int, now: Long): List<MediaCard> {
-        if (days <= 0) return emptyList()
-        val cutoff = now - days * DAY_MS
-        return items.filter { it.trashedAt != null && it.trashedAt < cutoff }
+    sealed interface Decision {
+        /** 바로 지워질 것이 없다 → 확인 없이 저장 */
+        data object Save : Decision
+
+        /** 바로 지워질 것이 있다 → 확인 대화상자 */
+        data class Confirm(val confirm: RetentionConfirm) : Decision
+
+        /** 지워질 것을 세지 못했다 → 바꾸지 않고 저장 실패를 알린다(확인 없이 지우는 일이 없게) */
+        data object Fail : Decision
+    }
+
+    /**
+     * 기간을 [days]로 줄일 때. [preview]는 TrashManager.previewPurge 결과로, 실제 정리(purgeExpired)와
+     * 같은 기준(단위 수·용량)으로 센 것이다.
+     */
+    fun decide(days: Int, preview: Result<PurgePreview?>): Decision {
+        val p = preview.getOrNull() ?: return Decision.Fail
+        return if (p.count <= 0 && p.bytes <= 0L) Decision.Save else Decision.Confirm(RetentionConfirm(days, p.count, p.bytes))
     }
 }
 

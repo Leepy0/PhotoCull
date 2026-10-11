@@ -6,7 +6,7 @@
     <!-- 카드 상태 카드 -->
     <string name="home_card_not_connected_title">카드 리더를 연결하세요</string>
     <string name="home_card_not_connected_body">SD 카드를 꽂은 카드 리더를 폰에 연결하면 가져올 사진을 바로 확인합니다</string>
-    <string name="home_card_interrupted">지난 가져오기가 %1$s/%2$s개에서 멈췄습니다. 카드를 다시 연결하면 남은 파일부터 이어서 가져옵니다</string>
+    <string name="home_card_interrupted">지난 가져오기가 %1$s/%2$s개에서 멈췄습니다. 카드를 다시 연결하고 가져오기를 누르면 남은 파일부터 이어서 가져옵니다</string>
     <string name="home_card_not_camera_title">카메라 카드가 아닙니다</string>
     <string name="home_card_not_camera_body">DCIM 폴더나 사진·영상을 찾지 못했습니다. 카메라에서 쓰던 카드를 연결하세요</string>
     <string name="home_card_needs_access_title">카드 폴더 접근을 허용하세요</string>
@@ -64,7 +64,7 @@
     <string name="home_last_copied">%1$s · %2$s개 복사</string>
     <string name="home_last_skipped">이미 있던 %1$s개 건너뜀</string>
     <string name="home_last_cancelled">중간에 취소함 · 남은 파일은 카드에 그대로 있습니다</string>
-    <string name="home_last_interrupted">중간에 멈춤 · 카드를 다시 연결하면 이어서 가져옵니다</string>
+    <string name="home_last_interrupted">중간에 멈춤 · 카드를 다시 연결하고 가져오기를 누르면 이어서 가져옵니다</string>
     <string name="home_last_failed">실패 %1$s개 · 카드에 그대로 있습니다</string>
     <string name="home_last_delete_failed">카드에서 못 지움 %1$s개 · 쓰기 방지 스위치를 확인하세요</string>
 

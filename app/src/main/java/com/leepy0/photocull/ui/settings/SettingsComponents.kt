@@ -11,6 +11,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -133,31 +135,46 @@ internal fun <T> SettingsChoiceItem(
     }
 }
 
-/** 권한 항목: 상태(아이콘 + 글자) + 누르면 시스템 설정 */
+/** 권한이 앱에 얼마나 필요한지. 온보딩의 "필수 / 권장"과 같은 말을 쓴다 */
+enum class PermissionNeed { REQUIRED, RECOMMENDED, OPTIONAL }
+
+/** 권한 항목: 설명 아래 상태(아이콘 + 글자) + 오른쪽에 보이는 [설정 열기]. 줄 전체가 눌린다(48dp 이상). */
 @Composable
 internal fun SettingsPermissionItem(
     icon: ImageVector,
     title: String,
     supporting: String,
     granted: Boolean,
-    required: Boolean,
+    need: PermissionNeed,
     onClick: () -> Unit,
 ) {
     val label = stringResource(R.string.settings_perm_open, title)
-    SettingsClickItem(
-        icon = icon,
-        title = title,
-        supporting = supporting,
-        onClick = null,
-        modifier = Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
-        trailing = {
-            val kind = when {
-                granted -> StatusKind.SUCCESS
-                required -> StatusKind.ERROR
-                else -> StatusKind.WARNING
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+                SupportingText(supporting)
+                when {
+                    granted -> PermissionState(StatusKind.SUCCESS, stringResource(R.string.settings_perm_granted))
+                    need == PermissionNeed.REQUIRED -> PermissionState(StatusKind.ERROR, stringResource(R.string.settings_perm_needed))
+                    need == PermissionNeed.RECOMMENDED -> PermissionState(StatusKind.INFO, stringResource(R.string.settings_perm_recommended))
+                    else -> PermissionState(StatusKind.INFO, stringResource(R.string.settings_perm_optional))
+                }
             }
-            PermissionState(kind, stringResource(if (granted) R.string.settings_perm_granted else R.string.settings_perm_needed))
         },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+                Text(stringResource(R.string.settings_perm_open_short), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.AutoMirrored.Outlined.OpenInNew,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(Spacing.iconSmall + Spacing.xxs),
+                )
+            }
+        },
+        modifier = Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
     )
 }
 
@@ -167,7 +184,8 @@ private fun PermissionState(kind: StatusKind, text: String) {
     val icon = when (kind) {
         StatusKind.SUCCESS -> Icons.Outlined.CheckCircle
         StatusKind.ERROR -> Icons.Outlined.ErrorOutline
-        else -> Icons.Outlined.WarningAmber
+        StatusKind.WARNING -> Icons.Outlined.WarningAmber
+        StatusKind.INFO -> Icons.Outlined.Info
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(Spacing.iconSmall + Spacing.xxs))

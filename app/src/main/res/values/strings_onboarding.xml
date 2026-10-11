@@ -2,7 +2,7 @@
 <resources>
     <!-- 시작(온보딩) -->
     <string name="onboarding_title">시작하기 전에</string>
-    <string name="onboarding_value">카메라 카드의 사진을 폰으로 옮기고, 흐린 사진과 연사를 골라 정리합니다. 두 가지만 허용하면 됩니다</string>
+    <string name="onboarding_value">카메라 카드의 사진을 폰으로 옮기고, 흐린 사진과 연사를 골라 정리합니다. 아래 두 단계 중 꼭 필요한 것은 모든 파일 접근 하나입니다</string>
     <string name="onboarding_step_number">%1$d단계</string>
     <string name="onboarding_required">필수</string>
     <string name="onboarding_recommended">권장</string>

@@ -24,7 +24,9 @@ import kotlinx.coroutines.launch
  * 휴지통 화면 상태와 동작.
  * - 복원은 확인 없이 바로 하고 결과를 스낵바로 알린다(복원은 데이터를 잃지 않는다).
  * - 영구 삭제(선택 / 비우기)는 되돌릴 수 없어서 확인 대화상자([TrashUiState.confirm])를 거친다.
+ *   확인하면 대화상자에 보였던 항목만 지운다(그사이 휴지통에 새로 들어온 것은 남는다).
  * - 파일 작업은 [TrashDataSource.workScope]에서 돌아 화면을 떠나도 중간에 끊기지 않는다.
+ * - 화면을 열 때 보관 기간이 지난 항목을 정리한다(앱을 오래 켜 둬도 기간이 지난 항목이 남지 않게).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TrashViewModel(private val source: TrashDataSource) : ViewModel() {
@@ -72,6 +74,18 @@ class TrashViewModel(private val source: TrashDataSource) : ViewModel() {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), TrashUiState())
 
+    init {
+        source.workScope.launch {
+            try {
+                source.purgeExpired()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 다음에 화면을 열 때나 앱을 시작할 때 다시 정리한다
+            }
+        }
+    }
+
     fun retry() {
         reload.update { it + 1 }
     }
@@ -106,9 +120,9 @@ class TrashViewModel(private val source: TrashDataSource) : ViewModel() {
     private fun restore(ids: List<Long>) {
         if (ids.isEmpty() || busy.value) return
         runWork(onError = TrashMessage.RestoreFailed) {
-            val restored = source.workScope.async { source.restore(ids) }.await()
-            if (restored > 0) selection.update { it - ids.toSet() }
-            TrashMessage.restored(ids.size, restored)
+            val report = source.workScope.async { source.restore(ids) }.await()
+            if (report.restored > 0 || report.gone > 0) selection.update { it - ids.toSet() }
+            TrashMessage.restored(ids.size, report)
         }
     }
 
@@ -120,10 +134,11 @@ class TrashViewModel(private val source: TrashDataSource) : ViewModel() {
         confirm.value = DeleteConfirm(items.map { it.id }, items.size, items.sumOf { it.bytes }, items.any { it.hasRaw })
     }
 
+    /** 휴지통 비우기: 지금 보이는 항목 목록을 대화상자에 담는다(확인하면 이 목록만 지운다) */
     fun askEmptyTrash() {
         val items = state.value.items
         if (items.isEmpty()) return
-        confirm.value = DeleteConfirm(null, items.size, items.sumOf { it.bytes }, items.any { it.hasRaw })
+        confirm.value = DeleteConfirm(items.map { it.id }, items.size, items.sumOf { it.bytes }, items.any { it.hasRaw })
     }
 
     fun dismissConfirm() {
@@ -135,12 +150,8 @@ class TrashViewModel(private val source: TrashDataSource) : ViewModel() {
         confirm.value = null
         if (busy.value) return
         runWork(onError = TrashMessage.DeleteFailed) {
-            val deleted = source.workScope.async {
-                if (request.ids == null) source.emptyTrash() else source.deleteForever(request.ids)
-            }.await()
-            if (deleted > 0) {
-                if (request.ids == null) selection.value = emptySet() else selection.update { it - request.ids.toSet() }
-            }
+            val deleted = source.workScope.async { source.deleteForever(request.ids) }.await()
+            if (deleted > 0) selection.update { it - request.ids.toSet() }
             // 일부만 지웠으면 확보 용량을 어림하지 않는다(부분 실패 문구에는 용량이 없다)
             val bytes = if (deleted >= request.count) request.bytes else 0L
             TrashMessage.deleted(request.count, deleted, bytes)

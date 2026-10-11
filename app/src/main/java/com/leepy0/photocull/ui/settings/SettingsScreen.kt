@@ -398,7 +398,7 @@ private fun SettingsList(
                 title = stringResource(R.string.settings_perm_all_files),
                 supporting = stringResource(R.string.settings_perm_all_files_desc),
                 granted = state.permissions.allFiles,
-                required = true,
+                need = PermissionNeed.REQUIRED,
                 onClick = actions.onOpenAllFiles,
             )
         }
@@ -408,7 +408,7 @@ private fun SettingsList(
                 title = stringResource(R.string.settings_perm_notifications),
                 supporting = stringResource(R.string.settings_perm_notifications_desc),
                 granted = state.permissions.notifications,
-                required = false,
+                need = PermissionNeed.RECOMMENDED,
                 onClick = actions.onOpenNotifications,
             )
         }
@@ -418,7 +418,7 @@ private fun SettingsList(
                 title = stringResource(R.string.settings_perm_install),
                 supporting = stringResource(R.string.settings_perm_install_desc),
                 granted = state.permissions.installPackages,
-                required = false,
+                need = PermissionNeed.OPTIONAL,
                 onClick = actions.onOpenInstall,
             )
         }
