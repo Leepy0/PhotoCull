@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 카드 연결 알림 -->
+    <string name="imp_card_title">카메라 카드가 연결됨</string>
+    <string name="imp_card_photos">사진 %1$s</string>
+    <string name="imp_card_videos">영상 %1$s</string>
+    <string name="imp_card_new_files">새 파일 %1$s개</string>
+    <string name="imp_card_nothing_new">이미 모두 가져온 카드입니다</string>
+    <string name="imp_card_tap_to_check">눌러서 가져올 사진을 확인하세요</string>
+    <string name="imp_card_needs_access">폴더 접근을 한 번 승인하면 가져올 수 있습니다</string>
+    <string name="imp_action_import">가져오기</string>
+    <string name="imp_action_cancel">취소</string>
+
+    <!-- 진행 알림 -->
+    <string name="imp_progress_title">사진 가져오는 중</string>
+    <string name="imp_progress_preparing">카드 확인 중</string>
+    <!-- 120/324 · 45% · 약 3분 남음 -->
+    <string name="imp_progress_text">%1$s/%2$s · %3$d%% · %4$s 남음</string>
+    <string name="imp_progress_text_no_eta">%1$s/%2$s · %3$d%%</string>
+    <string name="imp_progress_cancelling">취소하는 중</string>
+    <string name="imp_analysis_title">사진 분석 중</string>
+    <string name="imp_analysis_text">분석 중 %1$s/%2$s</string>
+    <string name="imp_analysis_preparing">흐린 사진과 연사를 찾고 있습니다</string>
+
+    <!-- 결과 알림 -->
+    <string name="imp_result_moved">가져오기 완료 · %1$s개 이동</string>
+    <string name="imp_result_copied">가져오기 완료 · %1$s개 복사</string>
+    <string name="imp_result_cancelled_moved">가져오기 취소됨 · %1$s개 이동</string>
+    <string name="imp_result_cancelled_copied">가져오기 취소됨 · %1$s개 복사</string>
+    <string name="imp_result_nothing_new">새로 가져온 파일이 없습니다</string>
+    <string name="imp_result_review">흐림 %1$s장 · 연사 %2$s그룹</string>
+    <string name="imp_result_review_clean">흐린 사진과 연사가 없습니다</string>
+    <string name="imp_result_skipped">이미 가져온 %1$s개를 건너뛰었습니다</string>
+    <string name="imp_result_failed">실패 %1$s개 · 눌러서 확인하세요</string>
+    <string name="imp_result_delete_failed">카드에서 못 지움 %1$s개 · 쓰기 금지 스위치를 확인하세요</string>
+    <string name="imp_result_eject_hint">카드를 뽑기 전에 알림창에서 USB 저장소를 꺼내기 하세요</string>
+
+    <!-- 오류 알림 -->
+    <string name="imp_error_card_removed_title">카드가 분리되었습니다</string>
+    <string name="imp_error_card_removed_text">%1$s/%2$s개 처리 · 다시 연결하면 남은 파일부터 이어서 가져옵니다</string>
+    <string name="imp_error_no_card_title">카메라 카드를 찾지 못했습니다</string>
+    <string name="imp_error_no_card_text">카드 리더를 다시 연결한 뒤 시도하세요</string>
+    <string name="imp_error_no_permission_title">카드에 접근할 수 없습니다</string>
+    <string name="imp_error_no_permission_text">앱을 열어 접근 권한을 허용하세요</string>
+    <string name="imp_error_space_title">저장 공간이 부족합니다</string>
+    <string name="imp_error_space_text">%1$s 더 필요합니다 · 공간을 확보한 뒤 다시 시도하세요</string>
+    <string name="imp_error_unexpected_title">가져오기를 마치지 못했습니다</string>
+    <string name="imp_error_unexpected_text">옮기지 못한 파일은 카드에 그대로 있습니다 · 앱에서 다시 시도하세요</string>
+</resources>
