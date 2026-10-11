@@ -2,6 +2,7 @@ package com.leepy0.photocull.ui.importer
 
 import android.content.Intent
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.leepy0.photocull.AppContainer
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -26,13 +28,21 @@ import kotlinx.coroutines.launch
  * 가져오기 화면 상태와 동작. 실제 복사는 ImportService가 하고, 여기서는 상태를 보여주고 시작·취소만 요청한다.
  * - 카드가 연결돼 있으면 화면을 열 때 자동으로 카드를 확인한다([AutoScanPolicy]).
  * - 카드 원본 처리(옮긴 뒤 삭제 / 카드에 남기기)는 설정값이 기본이고, 이 화면에서 바꾼 값은 이번 가져오기에만 쓴다.
+ *   바꾼 값은 [SavedStateHandle]에 두어 프로세스가 정리됐다 돌아와도(저장공간 설정에 다녀오는 사이 등) 유지된다.
+ * - 요약을 보여주는 중 저장 폴더·월별 폴더 설정이 바뀌면 카드를 다시 확인한다(요약의 저장 위치가 낡지 않게).
  */
-class ImportViewModel(private val source: ImportFlowSource) : ViewModel() {
+class ImportViewModel(
+    private val source: ImportFlowSource,
+    private val savedState: SavedStateHandle = SavedStateHandle(),
+) : ViewModel() {
 
-    constructor(container: AppContainer) : this(ContainerImportFlowSource(container))
+    constructor(container: AppContainer, savedState: SavedStateHandle) : this(ContainerImportFlowSource(container), savedState)
 
     private val policy = AutoScanPolicy()
-    private val moveModeOverride = MutableStateFlow<Boolean?>(null)
+    private val moveModeOverride: StateFlow<Boolean?> = savedState.getStateFlow<Boolean?>(KEY_MOVE_MODE, null)
+
+    /** 확인 중에 저장 위치 설정이 바뀌었으면 요약이 나온 뒤 한 번 더 확인한다 */
+    private var destChangedWhileScanning = false
     private val cancelRequested = MutableStateFlow(false)
 
     private val defaultMoveMode: Flow<Boolean> = source.settings()
@@ -75,13 +85,32 @@ class ImportViewModel(private val source: ImportFlowSource) : ViewModel() {
         viewModelScope.launch {
             combine(source.cardState, source.importState, ::Pair).collect { (card, import) ->
                 if (import !is ImportState.Running) cancelRequested.value = false
-                if (policy.shouldScan(card, import)) source.scan()
+                if (policy.shouldScan(card, import)) {
+                    source.scan()
+                } else if (import is ImportState.Ready && destChangedWhileScanning) {
+                    destChangedWhileScanning = false
+                    source.scan()
+                }
             }
+        }
+        viewModelScope.launch {
+            source.settings()
+                .map { it.destFolderName to it.monthlySubfolders }
+                .distinctUntilChanged()
+                .drop(1)
+                .catch { e -> if (e is CancellationException) throw e }
+                .collect {
+                    when (source.importState.value) {
+                        is ImportState.Ready -> source.scan()
+                        ImportState.Scanning -> destChangedWhileScanning = true
+                        else -> Unit
+                    }
+                }
         }
     }
 
     fun setMoveMode(move: Boolean) {
-        moveModeOverride.value = move
+        savedState[KEY_MOVE_MODE] = move
     }
 
     /** [가져오기 시작]. 공간이 모자라거나 새 파일이 없으면 아무것도 하지 않는다(버튼도 그때는 막혀 있다). */
@@ -132,5 +161,6 @@ class ImportViewModel(private val source: ImportFlowSource) : ViewModel() {
 
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
+        const val KEY_MOVE_MODE = "import_move_mode"
     }
 }

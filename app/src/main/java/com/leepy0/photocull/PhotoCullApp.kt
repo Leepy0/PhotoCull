@@ -27,6 +27,7 @@ class PhotoCullApp : Application(), SingletonImageLoader.Factory {
             runCatching { container.db.sessionDao().markRunningInterrupted(System.currentTimeMillis()) }
             // 처음 만들 때 지난 실행에서 남은 *.photocull.part와 멈춘 기록을 정리한다
             container.importController
+            runCatching { container.trash.reconcile() }
             runCatching { container.trash.purgeExpired() }
             container.analysis.kick()
         }

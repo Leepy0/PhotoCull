@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -137,12 +136,18 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            val trashed = runCatching { container.review.trashed().first() }.getOrDefault(emptyList())
-            val expiring = RetentionRules.expiring(trashed, days, System.currentTimeMillis())
-            if (expiring.isEmpty()) {
-                write { setTrashRetentionDays(days) }
-            } else {
-                retentionConfirm.value = RetentionConfirm(days, expiring.size, expiring.sumOf { it.bytes })
+            // 실제 정리(purgeExpired)와 같은 기준으로 센다. 세지 못하면 확인 없이 지워지지 않게 바꾸지 않는다.
+            val preview = try {
+                Result.success(container.trash.previewPurge(days))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            when (val decision = RetentionRules.decide(days, preview)) {
+                RetentionRules.Decision.Save -> write { setTrashRetentionDays(days) }
+                is RetentionRules.Decision.Confirm -> retentionConfirm.value = decision.confirm
+                RetentionRules.Decision.Fail -> _messages.trySend(SettingsMessage.SaveFailed)
             }
         }
     }

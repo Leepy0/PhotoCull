@@ -1,6 +1,7 @@
 package com.leepy0.photocull.trash
 
 import android.content.Context
+import android.database.sqlite.SQLiteFullException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -45,22 +46,25 @@ class TrashManagerImplTest {
     private val destDir get() = File(root, "DCIM/R10")
     private val trashDir get() = File(root, "DCIM/.PhotoCullTrash")
 
+    private fun manager(beforeDbWrite: () -> Unit = {}) = TrashManagerImpl(
+        context = context,
+        db = db,
+        settings = SettingsRepository(context),
+        storageRoot = { root },
+        mediaScanner = MediaScanSink { paths, _ -> scanned += paths },
+        storageAccessible = { accessible },
+        clock = { now },
+        retentionDays = { retention },
+        io = Dispatchers.Unconfined,
+        onRestored = { restoredCalls++ },
+        beforeDbWrite = beforeDbWrite,
+    )
+
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         db = AppDatabase.inMemory(context)
         root = tmp.newFolder("storage")
-        manager = TrashManagerImpl(
-            context = context,
-            db = db,
-            settings = SettingsRepository(context),
-            storageRoot = { root },
-            mediaScanner = MediaScanSink { paths, _ -> scanned += paths },
-            storageAccessible = { accessible },
-            clock = { now },
-            retentionDays = { retention },
-            io = Dispatchers.Unconfined,
-            onRestored = { restoredCalls++ },
-        )
+        manager = manager()
         sessionId = runBlocking {
             db.sessionDao().insert(ImportSessionEntity(volumeId = "vol", volumeLabel = "EOS", startedAt = NOW, moveMode = true))
         }
@@ -139,8 +143,8 @@ class TrashManagerImplTest {
         // 다른 사진은 그대로
         assertThat(item(other.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
         assertThat(File(other.jpg.dstPath!!).isFile).isTrue()
-        // 갤러리에서 빠지도록 원래 경로를 알림
-        assertThat(scanned).containsExactly(s.jpg.dstPath, s.raw.dstPath)
+        // 갤러리에서 빠지도록 원래 경로를, 확실히 정리되도록 새 경로도 알림
+        assertThat(scanned).containsExactly(s.jpg.dstPath, s.raw.dstPath, item(s.jpg.id).trashPath, item(s.raw.id).trashPath)
     }
 
     @Test fun keepIdsMarkWholeUnitKept() = runBlocking<Unit> {
@@ -185,7 +189,9 @@ class TrashManagerImplTest {
 
         val result = manager.moveToTrash(listOf(s.jpg.id))
 
-        assertThat(result.movedCount).isEqualTo(1)
+        // 옮긴 것과 따로 센다(실행 취소로 되돌릴 것이 없다)
+        assertThat(result.movedCount).isEqualTo(0)
+        assertThat(result.goneCount).isEqualTo(1)
         assertThat(result.failedCount).isEqualTo(0)
         assertThat(result.freedBytes).isEqualTo(0)
         assertThat(result.batch.trashedIds).isEmpty() // 되돌릴 파일 없음
@@ -388,7 +394,8 @@ class TrashManagerImplTest {
         // 대표 파일만 복원된 상태로 휴지통에 남은 짝(이전 버전 등)
         dao.update(item(a.jpg.id).copy(reviewState = ReviewState.KEPT))
 
-        assertThat(manager.emptyTrash()).isEqualTo(1)
+        // b 단위 + 대표 파일 없이 남은 a의 짝 단위
+        assertThat(manager.emptyTrash()).isEqualTo(2)
 
         assertThat(trashFiles()).containsExactly(".nomedia", "${a.jpg.id}_IMG_0001.JPG")
         assertThat(item(a.raw!!.id).reviewState).isEqualTo(ReviewState.DELETED)
@@ -431,15 +438,234 @@ class TrashManagerImplTest {
         assertThat(File(item(s.jpg.id).trashPath!!).isFile).isTrue()
     }
 
-    @Test fun purgeCleansOnlyPartLeftovers() = runBlocking<Unit> {
+    @Test fun purgeCleansOnlyOwnPartLeftovers() = runBlocking<Unit> {
         trashDir.mkdirs()
-        val part = File(trashDir, "5_IMG_0005.JPG" + StoragePaths.PART_SUFFIX).apply { writeText("x") }
+        val own = File(trashDir, "5_IMG_0005.JPG" + TrashFiles.TRASH_PART_SUFFIX).apply { writeText("x") }
+        val importers = File(trashDir, "6_IMG_0006.JPG" + StoragePaths.PART_SUFFIX).apply { writeText("x") }
         val unknown = File(trashDir, "notes.txt").apply { writeText("keep me") }
 
         manager.purgeExpired()
 
-        assertThat(part.exists()).isFalse()
+        assertThat(own.exists()).isFalse()
+        assertThat(importers.exists()).isTrue() // 가져오기의 임시 파일은 건드리지 않는다
         assertThat(unknown.exists()).isTrue()
+    }
+
+    // ------------------------------------------------------------ 가져오는 중 / 기록 실패
+
+    @Test fun unitStillImportingIsNotTrashedNorDeleted() = runBlocking<Unit> {
+        val s = shot("IMG_0001")
+        // CR3는 아직 복사 중(.part): 원래 자리에 파일이 없다
+        File(s.raw!!.dstPath!!).delete()
+        dao.update(item(s.raw.id).copy(importStatus = ImportStatus.PENDING))
+
+        val result = manager.moveToTrash(listOf(s.jpg.id))
+
+        assertThat(result.movedCount).isEqualTo(0)
+        assertThat(result.goneCount).isEqualTo(0)
+        assertThat(result.failedCount).isEqualTo(1)
+        assertThat(result.importingCount).isEqualTo(1)
+        assertThat(result.batch.trashedIds).isEmpty()
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
+        assertThat(item(s.raw.id).reviewState).isEqualTo(ReviewState.PENDING)
+        assertThat(File(s.jpg.dstPath!!).readBytes()).isEqualTo(s.jpgBytes)
+
+        // 모든 파일이 아직 없는 단위도 '이미 지워짐'으로 처리하지 않는다
+        File(s.jpg.dstPath!!).delete()
+        val again = manager.moveToTrash(listOf(s.jpg.id))
+        assertThat(again.goneCount).isEqualTo(0)
+        assertThat(again.importingCount).isEqualTo(1)
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
+    }
+
+    @Test fun dbFailureAfterTrashMoveMovesFilesBack() = runBlocking<Unit> {
+        val a = shot("IMG_0001")
+        val b = shot("IMG_0002")
+        val failing = manager(beforeDbWrite = { throw SQLiteFullException("full") })
+
+        val result = failing.moveToTrash(listOf(a.jpg.id, b.jpg.id))
+
+        assertThat(result.movedCount).isEqualTo(0)
+        assertThat(result.failedCount).isEqualTo(2)
+        for (s in listOf(a, b)) {
+            assertThat(File(s.jpg.dstPath!!).readBytes()).isEqualTo(s.jpgBytes)
+            assertThat(File(s.raw!!.dstPath!!).readBytes()).isEqualTo(s.rawBytes)
+            assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
+            assertThat(item(s.jpg.id).trashPath).isNull()
+        }
+        assertThat(trashFiles()).containsExactly(".nomedia")
+    }
+
+    @Test fun dbFailureAfterRestoreMovesFilesBackToTrash() = runBlocking<Unit> {
+        val s = shot("IMG_0001")
+        manager.moveToTrash(listOf(s.jpg.id))
+        val trashedJpg = item(s.jpg.id).trashPath!!
+        val failing = manager(beforeDbWrite = { throw SQLiteFullException("full") })
+
+        val report = failing.restoreDetailed(listOf(s.jpg.id))
+
+        assertThat(report.restored).isEqualTo(0)
+        assertThat(report.failed).isEqualTo(1)
+        assertThat(File(trashedJpg).readBytes()).isEqualTo(s.jpgBytes)
+        assertThat(File(s.jpg.dstPath!!).exists()).isFalse()
+        assertThat(File(s.raw!!.dstPath!!).exists()).isFalse()
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.TRASHED)
+    }
+
+    @Test fun trashWriteKeepsConcurrentAnalysisAndImportValues() = runBlocking<Unit> {
+        val s = shot("IMG_0001", withRaw = false)
+        dao.update(item(s.jpg.id).copy(importStatus = ImportStatus.VERIFIED))
+        // 휴지통이 행을 읽은 뒤 기록하기 직전에 분석·가져오기가 값을 썼다
+        val racing = manager(beforeDbWrite = {
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE media_item SET sharpness = 42.0, importStatus = 'SOURCE_DELETED' WHERE id = ?",
+                arrayOf<Any?>(s.jpg.id),
+            )
+        })
+
+        racing.moveToTrash(listOf(s.jpg.id))
+
+        val r = item(s.jpg.id)
+        assertThat(r.reviewState).isEqualTo(ReviewState.TRASHED)
+        assertThat(r.sharpness).isEqualTo(42.0)
+        assertThat(r.importStatus).isEqualTo(ImportStatus.SOURCE_DELETED)
+    }
+
+    @Test fun deletePlaceholderWhoseFileIsStillInDcimKeepsIt() = runBlocking<Unit> {
+        val s = shot("IMG_0001", withRaw = false)
+        // 예전 버전이 남긴 자리 표시: 휴지통 상태인데 파일은 원래 자리에
+        dao.update(item(s.jpg.id).copy(reviewState = ReviewState.TRASHED, trashedAt = NOW, trashPath = null))
+
+        assertThat(manager.deleteForever(listOf(s.jpg.id))).isEqualTo(0)
+
+        assertThat(File(s.jpg.dstPath!!).readBytes()).isEqualTo(s.jpgBytes)
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.TRASHED) // 복원하면 그대로 돌아온다
+        assertThat(manager.restore(listOf(s.jpg.id))).isEqualTo(1)
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.KEPT)
+    }
+
+    @Test fun restoreReportsGoneSeparately() = runBlocking<Unit> {
+        val a = shot("IMG_0001")
+        val b = shot("IMG_0002")
+        manager.moveToTrash(listOf(a.jpg.id, b.jpg.id))
+        File(item(a.jpg.id).trashPath!!).delete()
+        File(item(a.raw!!.id).trashPath!!).delete()
+
+        val report = manager.restoreDetailed(listOf(a.jpg.id, b.jpg.id))
+
+        assertThat(report).isEqualTo(RestoreReport(restored = 1, gone = 1, failed = 0))
+        assertThat(item(a.jpg.id).reviewState).isEqualTo(ReviewState.DELETED)
+        assertThat(item(b.jpg.id).reviewState).isEqualTo(ReviewState.KEPT)
+    }
+
+    @Test fun previewPurgeMatchesWhatPurgeDeletes() = runBlocking<Unit> {
+        val old = shot("IMG_0001")
+        val oldSingle = shot("IMG_0002", withRaw = false)
+        now = NOW - 20 * DAY
+        manager.moveToTrash(listOf(old.jpg.id, oldSingle.jpg.id))
+        val recent = shot("IMG_0003")
+        now = NOW - 2 * DAY
+        manager.moveToTrash(listOf(recent.jpg.id))
+        now = NOW
+
+        val preview = manager.previewPurge(7)!!
+        assertThat(preview.count).isEqualTo(2)
+        // JPG+CR3까지 실제로 지워지는 용량
+        assertThat(preview.bytes).isEqualTo((old.jpgBytes.size + old.rawBytes!!.size + oldSingle.jpgBytes.size).toLong())
+        assertThat(manager.previewPurge(0)).isEqualTo(PurgePreview(0, 0))
+
+        retention = 7
+        assertThat(manager.purgeExpired()).isEqualTo(preview.count)
+        assertThat(item(recent.jpg.id).reviewState).isEqualTo(ReviewState.TRASHED)
+    }
+
+    // ------------------------------------------------------------ 시작 시 맞추기
+
+    /** 파일만 휴지통으로 옮기고 기록 전에 앱이 끝난 상태를 만든다 */
+    private fun moveWithoutRecord(r: MediaItemEntity): File {
+        trashDir.mkdirs()
+        val target = File(trashDir, "${r.id}_${File(r.dstPath!!).name}")
+        check(File(r.dstPath!!).renameTo(target))
+        return target
+    }
+
+    @Test fun reconcileRecordsUnitMovedBeforeProcessDeath() = runBlocking<Unit> {
+        val s = shot("IMG_0001")
+        val rawFile = moveWithoutRecord(s.raw!!)
+        val jpgFile = moveWithoutRecord(s.jpg)
+        now = NOW + DAY
+
+        assertThat(manager.reconcile()).isEqualTo(2)
+
+        val jpg = item(s.jpg.id)
+        assertThat(jpg.reviewState).isEqualTo(ReviewState.TRASHED)
+        assertThat(jpg.trashPath).isEqualTo(jpgFile.path)
+        assertThat(item(s.raw.id).trashPath).isEqualTo(rawFile.path)
+        // 보관 기간은 지금부터(파일 수정 시각이 아니라): 바로 이어지는 정리에서 지워지지 않는다
+        assertThat(jpg.trashedAt).isEqualTo(NOW + DAY)
+        retention = 7
+        now = NOW + 3 * DAY
+        assertThat(manager.purgeExpired()).isEqualTo(0)
+        assertThat(jpgFile.readBytes()).isEqualTo(s.jpgBytes)
+        // 휴지통 화면에서 보이고 복원된다
+        assertThat(manager.restore(listOf(s.jpg.id))).isEqualTo(1)
+        assertThat(File(s.jpg.dstPath!!).readBytes()).isEqualTo(s.jpgBytes)
+    }
+
+    @Test fun reconcileMovesBackPartOfInterruptedUnit() = runBlocking<Unit> {
+        val s = shot("IMG_0001")
+        val rawFile = moveWithoutRecord(s.raw!!) // CR3만 옮기고 끝남(대표 파일은 원래 자리)
+
+        assertThat(manager.reconcile()).isEqualTo(1)
+
+        assertThat(rawFile.exists()).isFalse()
+        assertThat(File(s.raw.dstPath!!).readBytes()).isEqualTo(s.rawBytes)
+        assertThat(item(s.raw.id).reviewState).isEqualTo(ReviewState.PENDING)
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
+    }
+
+    @Test fun reconcileMarksRestoredWhenRestoreWasNotRecorded() = runBlocking<Unit> {
+        val s = shot("IMG_0001", withRaw = false)
+        dao.update(item(s.jpg.id).copy(sha256 = TrashFiles.sha256Of(File(s.jpg.dstPath!!))))
+        manager.moveToTrash(listOf(s.jpg.id))
+        // 복원 위치("_restored1")로 옮긴 뒤 기록 전에 끝남
+        val restored = File(destDir, "IMG_0001_restored1.JPG")
+        check(File(item(s.jpg.id).trashPath!!).renameTo(restored))
+        // 원래 자리에는 다른 사진이 들어와 있다(같은 크기라도 해시가 달라 내 것이 아니다)
+        File(s.jpg.dstPath!!).writeBytes(Random(99).nextBytes(s.jpgBytes.size))
+
+        assertThat(manager.reconcile()).isEqualTo(1)
+
+        val r = item(s.jpg.id)
+        assertThat(r.reviewState).isEqualTo(ReviewState.KEPT)
+        assertThat(r.dstPath).isEqualTo(restored.path)
+        assertThat(r.fileName).isEqualTo("IMG_0001_restored1.JPG")
+        assertThat(r.trashPath).isNull()
+    }
+
+    @Test fun reconcileLeavesUnknownAndMismatchedFiles() = runBlocking<Unit> {
+        val s = shot("IMG_0001", withRaw = false)
+        trashDir.mkdirs()
+        val unknown = File(trashDir, "holiday.jpg").apply { writeText("x") }
+        val noRow = File(trashDir, "9999_IMG_9999.JPG").apply { writeText("x") }
+        val wrongName = File(trashDir, "${s.jpg.id}_OTHER.JPG").apply { writeText("x") }
+        val ownPart = File(trashDir, "7_IMG_0007.JPG" + TrashFiles.TRASH_PART_SUFFIX).apply { writeText("x") }
+
+        assertThat(manager.reconcile()).isEqualTo(0)
+
+        assertThat(unknown.exists()).isTrue()
+        assertThat(noRow.exists()).isTrue()
+        assertThat(wrongName.exists()).isTrue()
+        assertThat(ownPart.exists()).isFalse()
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
+    }
+
+    @Test fun reconcileDoesNothingWithoutStorageAccess() = runBlocking<Unit> {
+        val s = shot("IMG_0001", withRaw = false)
+        moveWithoutRecord(s.jpg)
+        accessible = false
+        assertThat(manager.reconcile()).isEqualTo(0)
+        assertThat(item(s.jpg.id).reviewState).isEqualTo(ReviewState.PENDING)
     }
 
     // ------------------------------------------------------------ 파일 도우미
@@ -450,6 +676,38 @@ class TrashManagerImplTest {
         assertThat(TrashFiles.move(src, dst)).isFalse()
         assertThat(src.readText()).isEqualTo("a")
         assertThat(dst.readText()).isEqualTo("b")
+    }
+
+    @Test fun copyFallbackVerifiesHashAndNeverTouchesExistingPart() {
+        val dir = tmp.newFolder("copy")
+        val bytes = Random(5).nextBytes(50_000)
+        val src = File(dir, "a.jpg").apply { writeBytes(bytes) }
+        val dst = File(dir, "b.jpg")
+
+        // 사본 해시가 다르면(손상) 원본을 남기고 사본·임시 파일을 지운다
+        assertThat(TrashFiles.copyThenDelete(src, dst, hashOf = { "bad" })).isFalse()
+        assertThat(src.readBytes()).isEqualTo(bytes)
+        assertThat(dst.exists()).isFalse()
+        assertThat(dir.list()!!.toList()).containsExactly("a.jpg")
+
+        // 같은 이름의 임시 파일이 이미 있으면(남의 것일 수 있다) 지우지 않고 포기한다
+        val part = File(dir, "b.jpg" + TrashFiles.TRASH_PART_SUFFIX).apply { writeText("someone") }
+        assertThat(TrashFiles.copyThenDelete(src, dst)).isFalse()
+        assertThat(part.readText()).isEqualTo("someone")
+        assertThat(src.exists()).isTrue()
+        part.delete()
+
+        assertThat(TrashFiles.copyThenDelete(src, dst)).isTrue()
+        assertThat(src.exists()).isFalse()
+        assertThat(dst.readBytes()).isEqualTo(bytes)
+        assertThat(TrashFiles.TRASH_PART_SUFFIX).isNotEqualTo(StoragePaths.PART_SUFFIX)
+    }
+
+    @Test fun parseTrashNames() {
+        assertThat(TrashFiles.parseTrashName("12_IMG_0001.JPG")).isEqualTo(12L to setOf("IMG_0001.JPG"))
+        assertThat(TrashFiles.parseTrashName("12_3_IMG_0001.JPG")).isEqualTo(12L to setOf("3_IMG_0001.JPG", "IMG_0001.JPG"))
+        assertThat(TrashFiles.parseTrashName(".nomedia")).isNull()
+        assertThat(TrashFiles.parseTrashName("notes.txt")).isNull()
     }
 
     @Test fun restoreTargetsPickSharedSuffix() {

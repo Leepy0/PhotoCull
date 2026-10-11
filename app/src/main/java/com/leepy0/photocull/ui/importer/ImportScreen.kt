@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.window.core.layout.WindowSizeClass
 import com.leepy0.photocull.R
@@ -79,7 +80,7 @@ data class ImportActions(
 @Composable
 fun ImportScreen(onBack: () -> Unit, onOpenReview: () -> Unit) {
     val container = LocalAppContainer.current
-    val vm: ImportViewModel = viewModel { ImportViewModel(container) }
+    val vm: ImportViewModel = viewModel { ImportViewModel(container, createSavedStateHandle()) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }

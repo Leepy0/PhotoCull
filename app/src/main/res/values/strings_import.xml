@@ -26,7 +26,7 @@
     <string name="import_ready_raw">RAW</string>
     <string name="import_ready_videos">영상</string>
     <string name="import_ready_skip_copy">이미 가져온 %1$s개는 건너뜁니다</string>
-    <string name="import_ready_skip_move">이미 가져온 %1$s개는 다시 복사하지 않고 카드에서만 지웁니다</string>
+    <string name="import_ready_skip_move">이미 가져온 %1$s개는 다시 복사하지 않습니다. 폰에 복사본이 확인된 것만 카드에서 지웁니다</string>
     <string name="import_ready_dest_label">저장 위치</string>
     <string name="import_ready_storage_label">폰 저장 공간</string>
     <string name="import_ready_storage_text">필요 %1$s · 여유 %2$s</string>
@@ -107,7 +107,7 @@
     <!-- 오류 -->
     <string name="import_error_card_removed_title">카드가 분리되었습니다</string>
     <string name="import_error_card_removed_cause">%1$s/%2$s개를 처리한 뒤 카드 연결이 끊겼습니다. 옮긴 파일은 폰에 안전하게 저장되었습니다</string>
-    <string name="import_error_card_removed_fix">남은 파일은 카드를 다시 연결하면 이어서 가져옵니다</string>
+    <string name="import_error_card_removed_fix">카드를 다시 연결하고 가져오기를 누르면 남은 파일부터 이어서 가져옵니다</string>
     <string name="import_error_no_card_title">카메라 카드를 찾지 못했습니다</string>
     <string name="import_error_no_card_cause">카드 리더가 분리되었거나 카드에 사진 폴더(DCIM)가 없습니다</string>
     <string name="import_error_no_card_fix">카드 리더를 다시 연결한 뒤 다시 확인하세요</string>

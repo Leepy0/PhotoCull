@@ -14,7 +14,7 @@
 
     <!-- 칸 -->
     <string name="trash_days_left">%1$d일 남음</string>
-    <string name="trash_days_left_today">오늘 삭제</string>
+    <string name="trash_days_left_soon">곧 영구 삭제</string>
     <string name="trash_raw_badge">RAW</string>
     <string name="trash_open_item">%1$s 크게 보기</string>
     <string name="trash_open_item_days">%1$s, %2$s</string>
@@ -33,7 +33,7 @@
     <!-- 뷰어 -->
     <string name="trash_viewer_restore">복원</string>
     <string name="trash_viewer_days_left">%1$d일 뒤 영구 삭제</string>
-    <string name="trash_viewer_today">오늘 영구 삭제</string>
+    <string name="trash_viewer_soon">24시간 안에 영구 삭제</string>
     <string name="trash_viewer_forever">직접 비울 때까지 보관</string>
 
     <!-- 영구 삭제 확인 -->
@@ -46,6 +46,8 @@
     <string name="trash_snack_restored">%1$d개를 복원했습니다</string>
     <string name="trash_snack_restored_partial">%1$d개를 복원했고 %2$d개는 복원하지 못했습니다</string>
     <string name="trash_snack_restore_failed">복원하지 못했습니다. 파일 접근 권한과 저장공간을 확인하고 다시 시도하세요</string>
+    <string name="trash_snack_restore_failed_count">%1$d개를 복원하지 못했습니다</string>
+    <string name="trash_snack_restore_gone">%1$d개는 파일이 이미 지워져 목록에서 뺐습니다</string>
     <string name="trash_snack_deleted">%1$d개를 영구 삭제했습니다 · %2$s 확보</string>
     <string name="trash_snack_deleted_partial">%1$d개를 영구 삭제했고 %2$d개는 지우지 못했습니다</string>
     <string name="trash_snack_delete_failed">영구 삭제하지 못했습니다. 파일 접근 권한을 확인하고 다시 시도하세요</string>

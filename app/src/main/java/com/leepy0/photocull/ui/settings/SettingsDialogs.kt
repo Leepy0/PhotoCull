@@ -196,7 +196,8 @@ internal fun RetentionConfirmDialog(
                 onClick = onConfirm,
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
-                Text(stringResource(R.string.settings_retention_confirm_action, confirm.days))
+                // 되돌릴 수 없는 결과를 동사로: "23개 영구 삭제하고 변경"
+                Text(stringResource(R.string.settings_retention_confirm_action, confirm.count))
             }
         },
         dismissButton = {

@@ -55,8 +55,8 @@
     <string name="settings_retention_days_desc">삭제한 사진은 %1$d일이 지나면 자동으로 영구 삭제합니다</string>
     <string name="settings_retention_forever_desc">휴지통을 직접 비울 때까지 보관합니다</string>
     <string name="settings_retention_confirm_title">보관 기간을 %1$d일로 줄일까요?</string>
-    <string name="settings_retention_confirm_body">%1$d일보다 오래된 %2$d개(%3$s)가 바로 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
-    <string name="settings_retention_confirm_action">%1$d일로 변경</string>
+    <string name="settings_retention_confirm_body">휴지통에 %1$d일 넘게 있던 %2$d개(%3$s)가 바로 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
+    <string name="settings_retention_confirm_action">%1$d개 영구 삭제하고 변경</string>
 
     <!-- 화면 -->
     <string name="settings_theme">테마</string>
@@ -72,10 +72,13 @@
     <string name="settings_perm_all_files_desc">카드 사진을 읽고 DCIM에 저장할 때 필요합니다(필수)</string>
     <string name="settings_perm_notifications">알림</string>
     <string name="settings_perm_notifications_desc">카드 연결과 가져오기 진행을 알려줍니다</string>
-    <string name="settings_perm_install">앱 설치(업데이트용)</string>
-    <string name="settings_perm_install_desc">앱 안에서 새 버전을 설치할 때 필요합니다</string>
+    <string name="settings_perm_install">앱 설치</string>
+    <string name="settings_perm_install_desc">업데이트용(선택). 앱 안에서 새 버전을 설치할 때만 씁니다</string>
     <string name="settings_perm_granted">허용됨</string>
     <string name="settings_perm_needed">필요</string>
+    <string name="settings_perm_recommended">권장</string>
+    <string name="settings_perm_optional">선택</string>
+    <string name="settings_perm_open_short">설정 열기</string>
     <string name="settings_perm_open">%1$s 설정 열기</string>
     <string name="settings_onboarding">권한 안내 다시 보기</string>
     <string name="settings_onboarding_desc">처음 실행할 때 본 안내 화면을 엽니다</string>

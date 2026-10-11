@@ -104,9 +104,10 @@ internal fun TrashCell(
     }
 }
 
+/** "28일 남음", 24시간이 안 남았으면 "곧 영구 삭제" */
 @Composable
 internal fun daysLeftText(days: Int): String =
-    if (days <= 0) stringResource(R.string.trash_days_left_today) else stringResource(R.string.trash_days_left, days)
+    if (days <= 0) stringResource(R.string.trash_days_left_soon) else stringResource(R.string.trash_days_left, days)
 
 /** "28일 남음". 곧 지워질 항목(3일 이하)은 경고 바탕 + 모래시계 아이콘(색만으로 구분하지 않음) */
 @Composable
@@ -171,7 +172,7 @@ internal fun TrashViewerBar(
         Text(
             when {
                 daysLeft == null -> stringResource(R.string.trash_viewer_forever)
-                daysLeft <= 0 -> stringResource(R.string.trash_viewer_today)
+                daysLeft <= 0 -> stringResource(R.string.trash_viewer_soon)
                 else -> stringResource(R.string.trash_viewer_days_left, daysLeft)
             },
             style = MaterialTheme.typography.bodyMedium,
@@ -232,9 +233,15 @@ internal fun DeleteConfirmDialog(
 
 /** 메시지 → 화면 문구 */
 fun TrashMessage.text(context: Context): String = when (this) {
-    is TrashMessage.Restored ->
-        if (failed > 0) context.getString(R.string.trash_snack_restored_partial, count, failed)
-        else context.getString(R.string.trash_snack_restored, count)
+    is TrashMessage.Restored -> listOfNotNull(
+        when {
+            count > 0 && failed > 0 -> context.getString(R.string.trash_snack_restored_partial, count, failed)
+            count > 0 -> context.getString(R.string.trash_snack_restored, count)
+            failed > 0 -> context.getString(R.string.trash_snack_restore_failed_count, failed)
+            else -> null
+        },
+        if (gone > 0) context.getString(R.string.trash_snack_restore_gone, gone) else null,
+    ).joinToString(". ")
     TrashMessage.RestoreFailed -> context.getString(R.string.trash_snack_restore_failed)
     is TrashMessage.Deleted ->
         if (failed > 0) context.getString(R.string.trash_snack_deleted_partial, count, failed)
