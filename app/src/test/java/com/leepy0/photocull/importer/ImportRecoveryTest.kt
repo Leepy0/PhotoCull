@@ -94,4 +94,74 @@ class ImportRecoveryTest {
         // 복구된 행은 다음 스캔에서 이미 가져온 파일로 대조된다
         assertThat(h.ledger.importedKeys(h.volume.id).map { it.srcRelPath }).containsExactly("DCIM/100CANON/IMG_0001.JPG")
     }
+
+    @Test fun partThatMayBeTheOnlyCopyIsRestoredNotDeleted() = runBlocking<Unit> {
+        val dest = h.dest.apply { mkdirs() }
+        val sid = h.ledger.insertSession(ImportSessionEntity(volumeId = h.volume.id, volumeLabel = "x", startedAt = 1, moveMode = true))
+
+        // 1) 카드 원본까지 지웠는데(SOURCE_DELETED) 전원 차단으로 이름 변경이 사라져 .part만 남음 → 되살림, 상태 유지
+        val a = randomBytes(11, 6_000)
+        val aFinal = File(dest, "IMG_0011.JPG")
+        val aPart = File(dest, "IMG_0011.JPG.photocull.part").apply { writeBytes(a) }
+        val aId = h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0011.JPG", aFinal, ImportStatus.SOURCE_DELETED, sha256(a), a.size.toLong()))
+
+        // 2) 검증 기록(COPIED)까지 남기고 이름 변경 전후에 종료 → 되살리고 VERIFIED
+        val b = randomBytes(12, 7_000)
+        val bFinal = File(dest, "2026-10/IMG_0012.CR3").apply { parentFile!!.mkdirs() }
+        val bPart = PartFiles.partOf(bFinal).apply { writeBytes(b) }
+        val bId = h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0012.CR3", bFinal, ImportStatus.COPIED, sha256(b), b.size.toLong()))
+
+        // 3) 최종 파일이 이미 있으면 .part는 남은 찌꺼기 → 삭제(최종 파일은 그대로)
+        val c = randomBytes(13, 3_000)
+        val cFinal = File(dest, "IMG_0013.JPG").apply { writeBytes(c) }
+        val cPart = PartFiles.partOf(cFinal).apply { writeBytes(c) }
+        val cId = h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0013.JPG", cFinal, ImportStatus.VERIFIED, sha256(c), c.size.toLong()))
+
+        // 4) 기록과 크기는 같지만 내용이 다른 .part(복사 도중 멈춤) → 삭제, 카드 원본이 아직 있으므로 실패 행으로
+        val d = randomBytes(14, 4_000)
+        val dFinal = File(dest, "IMG_0014.JPG")
+        val dPart = PartFiles.partOf(dFinal).apply { writeBytes(randomBytes(15, 4_000)) }
+        val dId = h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0014.JPG", dFinal, ImportStatus.COPIED, sha256(d), d.size.toLong()))
+
+        // 5) 저장 폴더 설정이 바뀌어 저장 폴더 밖에 있는 멈춘 행의 .part도 같은 규칙
+        val e = randomBytes(16, 2_000)
+        val eFinal = File(tmp.root, "old/IMG_0016.JPG").apply { parentFile!!.mkdirs() }
+        val ePart = PartFiles.partOf(eFinal).apply { writeBytes(e) }
+        val eId = h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0016.JPG", eFinal, ImportStatus.COPIED, sha256(e), e.size.toLong()))
+
+        val report = ImportRecovery(h.ledger).run(dest)
+
+        assertThat(report.restoredPartFiles).isEqualTo(3)
+        assertThat(report.removedPartFiles).isEqualTo(2)
+        assertThat(report.abandonedItems).isEqualTo(1)
+        for ((final, bytes) in listOf(aFinal to a, bFinal to b, cFinal to c, eFinal to e)) {
+            assertThat(sha256(final)).isEqualTo(sha256(bytes))
+        }
+        for (part in listOf(aPart, bPart, cPart, dPart, ePart)) assertThat(part.exists()).isFalse()
+        assertThat(dFinal.exists()).isFalse()
+
+        val dao = h.db.mediaDao()
+        assertThat(dao.get(aId)!!.importStatus).isEqualTo(ImportStatus.SOURCE_DELETED)
+        assertThat(dao.get(bId)!!.importStatus).isEqualTo(ImportStatus.VERIFIED)
+        assertThat(dao.get(cId)!!.importStatus).isEqualTo(ImportStatus.VERIFIED)
+        assertThat(dao.get(dId)!!.importStatus).isEqualTo(ImportStatus.FAILED)
+        assertThat(dao.get(eId)!!.importStatus).isEqualTo(ImportStatus.VERIFIED)
+        assertThat(aFinal.lastModified()).isEqualTo(DEFAULT_MTIME)
+    }
+
+    @Test fun unreadablePartIsKept() = runBlocking<Unit> {
+        val dest = h.dest.apply { mkdirs() }
+        val sid = h.ledger.insertSession(ImportSessionEntity(volumeId = h.volume.id, volumeLabel = "x", startedAt = 1, moveMode = true))
+        val a = randomBytes(21, 1_000)
+        val final = File(dest, "IMG_0021.JPG")
+        val part = PartFiles.partOf(final).apply { writeBytes(a) }
+        h.ledger.insertItem(row(sid, "DCIM/100CANON/IMG_0021.JPG", final, ImportStatus.SOURCE_DELETED, sha256(a), a.size.toLong()))
+        // 읽을 수 없으면 유일한 복사본일 수 있으므로 지우지 않는다
+        val unreadable = object : DestinationFiles by DestinationFiles.Default {
+            override fun openForRead(file: File): java.io.InputStream = throw java.io.IOException("EIO")
+        }
+        val report = ImportRecovery(h.ledger, unreadable).run(dest)
+        assertThat(report.removedPartFiles).isEqualTo(0)
+        assertThat(part.exists()).isTrue()
+    }
 }

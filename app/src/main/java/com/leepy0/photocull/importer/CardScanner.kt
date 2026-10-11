@@ -61,9 +61,8 @@ object CardScanner {
             units += ShotUnit(CardFileTypes.withoutExtension(sorted.first().file.relPath), sorted)
         }
         for (video in videos) {
-            // 같은 폴더에 같은 이름 사진이 있으면 단위 키가 겹치지 않게 확장자까지 넣는다
-            val keyPath = if (groupKey(video.file) in stillGroups) video.file.relPath else CardFileTypes.withoutExtension(video.file.relPath)
-            units += ShotUnit(keyPath, listOf(video))
+            // 영상은 파일마다 단위: 확장자까지 넣어 같은 이름의 사진(A.JPG)이나 다른 영상(A.MP4와 A.MOV)과 단위 키가 겹치지 않게 한다
+            units += ShotUnit(video.file.relPath, listOf(video))
         }
         units.sortWith(compareBy({ it.primary.file.relPath.lowercase(Locale.ROOT) }, { it.primary.file.relPath }))
 

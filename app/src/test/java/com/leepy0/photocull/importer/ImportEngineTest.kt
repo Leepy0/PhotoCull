@@ -182,7 +182,10 @@ class ImportEngineTest {
         assertThat(h.phoneFiles().keys).containsExactly("IMG_0001.JPG", "IMG_0001.CR3")
         val dup = h.item("DCIM/100CANON/IMG_0001.JPG")
         assertThat(dup.importStatus).isEqualTo(ImportStatus.DUPLICATE)
-        assertThat(dup.isPrimary).isFalse() // 검토에 두 번 나오지 않게
+        // 그 파일을 검토에 내놓는 기록이 없으므로 이 단위의 대표로 들인다(CR3만 대표 없이 남지 않게)
+        assertThat(dup.isPrimary).isTrue()
+        assertThat(h.item("DCIM/100CANON/IMG_0001.CR3").unitKey).isEqualTo(dup.unitKey)
+        assertThat(h.item("DCIM/100CANON/IMG_0001.CR3").isPrimary).isFalse()
         assertThat(dup.dstPath).isEqualTo(File(h.dest, "IMG_0001.JPG").path)
         assertThat(dup.sha256).isEqualTo(sha256(jpg1))
         // 이동 모드: 같은 내용이 확인됐으므로 카드 원본 삭제

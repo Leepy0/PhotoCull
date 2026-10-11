@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.Locale
+import kotlin.math.abs
 
 data class ImportRequest(
     val plan: ScanPlan,
@@ -35,11 +36,13 @@ data class EngineOutcome(val result: ImportResult, val error: ImportError?)
 /**
  * 카드 → 폰 이동의 핵심. DESIGN §3.3 순서를 그대로 따른다.
  *
- * 안전 불변식: 카드 원본은 폰에 같은 SHA-256의 복사본이 확인된 뒤에만 지운다.
- * - 새 파일: `.photocull.part`로 복사하며 해시 → fsync → 다시 읽어 해시 비교(불일치면 1회 재시도) → 이름 변경 → VERIFIED
+ * 안전 불변식: 카드 원본은 폰에 같은 SHA-256의 복사본이 디스크까지 기록(fsync)된 뒤에만 지운다.
+ * - 새 파일: `.photocull.part`로 복사하며 해시 → fsync → 다시 읽어 해시 비교(불일치면 1회 재시도)
+ *   → 이름 변경 → 이름 변경도 fsync → VERIFIED
  * - 같은 이름에 같은 내용(크기+해시)이 이미 있으면 DUPLICATE(복사 생략)
- * - 이전 기록과 같은 파일은 복사 생략. 이동 모드면 기록된 복사본의 해시를 다시 확인한 뒤에만 원본 삭제
+ * - 이전 기록과 같은 파일은 복사 생략. 이동 모드면 기록된 복사본과 카드 파일의 해시를 모두 다시 확인한 뒤에만 원본 삭제
  * - 원본 삭제는 촬영 단위의 모든 파일 처리가 끝난 뒤. 중간에 멈추면 단위가 카드에 함께 남는다.
+ * - DB는 가져오기 열만 바꾼다(분석·검토가 같은 행을 동시에 쓴다). [ImportLedger] 참고
  *
  * 디스크·DB 작업이 많으므로 IO 디스패처에서 부른다.
  */
@@ -72,8 +75,11 @@ class ImportEngine(
         data class Duplicate(val existing: File, val sha256: String) : Slot
     }
 
-    /** 단위 처리가 끝나면 지울 카드 원본과 그 근거가 된 폰 복사본 */
-    private class PendingDelete(val file: CardFile, val rowId: Long, val copy: File)
+    /**
+     * 단위 처리가 끝나면 지울 카드 원본과 그 근거가 된 폰 복사본.
+     * [synced]: 이번 실행에서 복사본(이름 변경 포함)을 이미 fsync했는지. 아니면 지우기 전에 한다.
+     */
+    private class PendingDelete(val file: CardFile, val rowId: Long, val copy: File, val synced: Boolean)
 
     // 흐름 제어용 신호(외부로 나가지 않음)
     private class SourceReadException(cause: Throwable) : Exception(cause)
@@ -104,6 +110,11 @@ class ImportEngine(
         private var duplicates = 0
         private var failed = 0
         private var deleteFailed = 0
+        /** 이번 실행에서 지운 카드 원본 수 / 카드가 그대로 있는데 못 지운 수 */
+        private var deletedSources = 0
+        private var undeletable = 0
+        /** 처음 몇 개가 모두 지워지지 않으면 쓰기 금지 카드로 보고 남은 삭제는 시도하지 않는다 */
+        private var sourceReadOnly = false
         private var savedBytes = 0L
         private var savedPhotos = 0
         private var savedVideos = 0
@@ -138,7 +149,9 @@ class ImportEngine(
             var endState = SessionState.COMPLETED
             try {
                 if (!destRoot.isDirectory && !destRoot.mkdirs()) throw IOException("destination not writable")
-                PartFiles.clean(destRoot)
+                // 남은 .part: 무조건 지우지 않는다(이름 변경이 디스크에 남지 못한 유일한 복사본일 수 있다)
+                val parts = PartFileRecovery(ledger, io, clock)
+                for (part in PartFiles.list(destRoot)) parts.handle(part)
                 loadLedger()
                 progress.emitNow()
                 for (unit in plan.units) {
@@ -227,13 +240,17 @@ class ImportEngine(
             }
         }
 
-        /** 이전에 가져온 파일: 복사하지 않는다. 이동 모드면 기록된 폰 복사본을 다시 확인한 뒤에만 원본을 지운다. */
-        private fun handleAlreadyImported(uf: UnitFile, refs: List<StoredRef>, deletes: MutableList<PendingDelete>) {
+        /**
+         * 이전에 가져온 파일: 복사하지 않는다. 이동 모드면 기록된 폰 복사본을 다시 확인하고,
+         * 카드 파일도 기록된 해시와 같은지 읽어 본 뒤에만 원본을 지운다(경로·크기·수정 시각만 같은 다른 파일일 수 있다).
+         */
+        private suspend fun handleAlreadyImported(uf: UnitFile, refs: List<StoredRef>, deletes: MutableList<PendingDelete>) {
             duplicates++
             if (!request.moveMode) return
             checkCancelled()
             val ref = refs.firstOrNull { verifyStoredCopy(it, uf.file.size) } ?: return // 확인 못 하면 카드에 남긴다
-            deletes += PendingDelete(uf.file, ref.id, File(requireNotNull(ref.dstPath)))
+            if (sourceHash(uf.file) != ref.sha256) return
+            deletes += PendingDelete(uf.file, ref.id, File(requireNotNull(ref.dstPath)), synced = false)
         }
 
         private fun verifyStoredCopy(ref: StoredRef, size: Long): Boolean {
@@ -245,27 +262,76 @@ class ImportEngine(
         }
 
         private suspend fun importNewFiles(unit: ShotUnit, newFiles: List<UnitFile>, deletes: MutableList<PendingDelete>) {
-            // 같은 단위의 일부가 이전에 저장됐으면(예: JPG는 옮겨졌고 CR3 복사 중 카드 분리) 그 단위에 이어 붙인다:
-            // 같은 단위 키, 같은 폴더, 같은 접미사. 단, 같은 경로의 파일이 다른 내용으로 기록돼 있으면 다른 촬영이다.
-            val siblings = if (unit.isVideo) emptyList() else siblingsByBase[unit.keyPath.lowercase(Locale.ROOT)].orEmpty()
-            val newPaths = newFiles.mapTo(HashSet()) { it.file.relPath.lowercase(Locale.ROOT) }
-            val anchor = siblings.takeIf { list -> list.none { it.srcRelPath.lowercase(Locale.ROOT) in newPaths } }?.firstOrNull()
-            val unitKey = anchor?.unitKey ?: UnitKeys.unit(session.id, unit.keyPath)
-            val capturedAt = anchor?.capturedAt ?: captureTimeOf(unit)
+            // 같은 촬영의 일부가 이전에 저장됐으면(예: JPG는 옮겨졌고 CR3 복사 중 카드 분리) 그 단위에 이어 붙인다:
+            // 같은 단위 키, 같은 폴더, 같은 접미사.
+            val anchor = findAnchor(unit, newFiles)
+            var unitKey = anchor?.unitKey ?: UnitKeys.unit(session.id, unit.keyPath)
+            var capturedAt = anchor?.capturedAt ?: captureTimeOf(unit)
+            var storedPrimary = anchor != null &&
+                siblingsOf(unit).any { it.unitKey == anchor.unitKey && it.isPrimary }
             val defaultDir = StoragePaths.destDir(request.destFolderName, request.monthlySubfolders, capturedAt, request.storageRoot)
             val preferred = anchor?.let(::preferredSlot)
-            val storedPrimary = anchor != null && siblings.any { it.isPrimary }
-            val top = unit.files.first()
 
             val slots = resolveNames(unit, newFiles, defaultDir, preferred)
+
+            // 같은 이름·같은 내용의 파일이 이미 있으면(중복) 그 파일을 검토에 내놓는 주인 행을 찾는다.
+            // - 주인이 있으면 그 행이 검토에 나오므로 중복 행은 단위에서 떼어 두고, 이 단위의 새 파일은 주인 단위에 붙인다.
+            // - 주인이 없으면(앱 데이터 삭제 뒤 다시 가져오기 등) 기존 파일을 이 단위의 일원으로 들인다(대표 규칙 그대로).
+            val owners = HashMap<UnitFile, StoredRef>()
+            slots?.forEach { (uf, slot) ->
+                if (slot is Slot.Duplicate) ledger.liveOwner(slot.existing.path)?.let { owners[uf] = it }
+            }
+            if (anchor == null) {
+                newFiles.firstNotNullOfOrNull { owners[it] }?.let { owner ->
+                    unitKey = owner.unitKey
+                    capturedAt = owner.capturedAt
+                    storedPrimary = ledger.unitHasLivePrimary(owner.unitKey)
+                }
+            }
+            // 대표 파일: 단위에 이미 대표가 없으면 이번에 단위에 들어가는 첫 파일(JPG > HIF > CR3 순)
+            val firstMember = newFiles.firstOrNull { uf ->
+                when (slots?.get(uf)) {
+                    is Slot.New -> true
+                    is Slot.Duplicate -> uf !in owners
+                    null -> false
+                }
+            }
+
             for (uf in newFiles) {
                 checkCancelled()
-                val isPrimary = uf === top && !storedPrimary
+                val isPrimary = !storedPrimary && uf === firstMember
                 when (val slot = slots?.get(uf)) {
                     null -> failWithoutCopy(uf, capturedAt, FailureReason.WRITE_ERROR)
-                    is Slot.Duplicate -> recordDuplicate(uf, slot, capturedAt, deletes)
+                    is Slot.Duplicate -> recordDuplicate(uf, slot, if (uf in owners) null else unitKey, isPrimary, capturedAt, deletes)
                     is Slot.New -> copyNew(uf, slot.target, unitKey, isPrimary, capturedAt, deletes)
                 }
+            }
+        }
+
+        private fun siblingsOf(unit: ShotUnit): List<StoredRef> =
+            if (unit.isVideo) emptyList() else siblingsByBase[unit.keyPath.lowercase(Locale.ROOT)].orEmpty()
+
+        /**
+         * 이전에 저장된 같은 폴더·같은 기본 이름의 파일 중 이번 새 파일과 같은 촬영으로 볼 수 있는 것(가장 최근 것).
+         * - 수정 시각이 모두 [SAME_EXPOSURE_MS] 안: 한 번의 촬영에서 JPG와 CR3는 1~2초 안에 기록된다.
+         *   이동 모드로 카드를 비운 뒤 카메라 파일 번호가 다시 1부터 시작해도 예전의 다른 사진에 붙지 않게 한다.
+         *   수정 시각을 모르면(0) 붙이지 않는다.
+         * - 그 단위가 살아 있어야 한다(검토 대기·남김). 휴지통·영구 삭제된 단위에 붙으면 검토에 영영 나오지 않는다.
+         * - 같은 경로가 다른 내용으로 기록된 단위는 다른 촬영이다.
+         */
+        private fun findAnchor(unit: ShotUnit, newFiles: List<UnitFile>): StoredRef? {
+            val siblings = siblingsOf(unit)
+            if (siblings.isEmpty()) return null
+            val times = newFiles.map { it.file.lastModified }
+            if (times.any { it <= 0 }) return null
+            val newPaths = newFiles.mapTo(HashSet()) { it.file.relPath.lowercase(Locale.ROOT) }
+            val byUnit = siblings.groupBy { it.unitKey }
+            return siblings.firstOrNull { s ->
+                s.srcLastModified > 0 &&
+                    times.all { abs(it - s.srcLastModified) <= SAME_EXPOSURE_MS } &&
+                    byUnit.getValue(s.unitKey).let { members ->
+                        members.all { it.isLive } && members.none { it.srcRelPath.lowercase(Locale.ROOT) in newPaths }
+                    }
             }
         }
 
@@ -424,6 +490,10 @@ class ImportEngine(
             row = row.copy(id = ledger.insertItem(row))
             val part = PartFiles.partOf(target)
             var verified = false
+            /** 최종 이름으로 바뀜(이제 폰에 최종 파일이 있다) */
+            var renamed = false
+            /** 이름 변경까지 fsync됨 */
+            var durable = false
             var reason: FailureReason? = null
             try {
                 var attempt = 0
@@ -452,14 +522,14 @@ class ImportEngine(
                         break
                     }
                     row = row.copy(importStatus = ImportStatus.COPIED, sha256 = sha, updatedAt = clock())
-                    ledger.updateItem(row)
+                    ledger.updateImportFields(row)
 
                     // 4. .part를 다시 읽어 비교. 불일치면 지우고 1회 재시도
                     val check = Sha256.ofFile(io, part, buffer)
                     if (check != sha || part.length() != file.size) {
                         deleteQuietly(part)
                         row = row.copy(importStatus = ImportStatus.PENDING, sha256 = null, updatedAt = clock())
-                        ledger.updateItem(row)
+                        ledger.updateImportFields(row)
                         if (attempt < MAX_ATTEMPTS) continue
                         reason = FailureReason.VERIFY_FAILED
                         break
@@ -471,9 +541,17 @@ class ImportEngine(
                         reason = FailureReason.WRITE_ERROR
                         break
                     }
+                    renamed = true
+                    // 이름 변경까지 디스크에 기록. 실패하면 복사본은 두되 카드 원본은 지우기 전에 다시 시도한다
+                    durable = try {
+                        io.syncRenamed(target)
+                        true
+                    } catch (e: Exception) {
+                        false
+                    }
                     if (file.lastModified > 0) runCatching { target.setLastModified(file.lastModified) }
                     row = row.copy(importStatus = ImportStatus.VERIFIED, updatedAt = clock())
-                    ledger.updateItem(row)
+                    ledger.updateImportFields(row)
                     verified = true
                     break
                 }
@@ -481,8 +559,14 @@ class ImportEngine(
                 // 카드 분리·공간 부족·취소·예상 못 한 오류: 현재 .part 정리, 행 정리 후 위로 전달
                 if (!verified) {
                     withContext(NonCancellable) {
-                        deleteQuietly(part)
-                        runCatching { ledger.updateItem(detach(row, interruptCode(e))) }
+                        if (renamed) {
+                            // 최종 파일은 이미 검증을 마치고 제자리에 있다: 지우거나 행을 떼어내지 않는다(주인 없는 파일이 된다).
+                            // COPIED(경로·해시 유지)로 두면 다음 복구가 VERIFIED로 올린다. 카드 원본은 아직 그대로다.
+                            runCatching { ledger.updateImportFields(row.copy(importStatus = ImportStatus.COPIED, updatedAt = clock())) }
+                        } else {
+                            deleteQuietly(part)
+                            runCatching { ledger.updateImportFields(detach(row, interruptCode(e))) }
+                        }
                     }
                 }
                 throw e
@@ -490,14 +574,14 @@ class ImportEngine(
 
             if (verified) {
                 onVerified(uf, target, isPrimary)
-                if (request.moveMode) deletes += PendingDelete(file, row.id, target)
+                if (request.moveMode) deletes += PendingDelete(file, row.id, target, synced = durable)
                 progress.finishFile()
                 return
             }
             // 실패: 카드 원본은 그대로 둔다
             val failure = reason ?: FailureReason.WRITE_ERROR
             deleteQuietly(part)
-            ledger.updateItem(detach(row, failure.name))
+            ledger.updateImportFields(detach(row, failure.name))
             failed++
             failures += ImportFailure(display(file), failure, null)
             progress.finishFile(failed = true)
@@ -568,10 +652,24 @@ class ImportEngine(
             return Sha256.hex(digest)
         }
 
-        private suspend fun recordDuplicate(uf: UnitFile, slot: Slot.Duplicate, capturedAt: Long, deletes: MutableList<PendingDelete>) {
+        /**
+         * 이미 있던 같은 내용 파일을 가리키는 행.
+         * @param memberKey null이면 그 파일의 주인 행이 따로 있다: 검토에 두 번 나오지 않게 단위에서 떼어 둔다.
+         *   아니면 주인이 없는 파일을 이 단위의 일원으로 들인다(대표면 분석·검토 대상).
+         */
+        private suspend fun recordDuplicate(
+            uf: UnitFile,
+            slot: Slot.Duplicate,
+            memberKey: String?,
+            isPrimary: Boolean,
+            capturedAt: Long,
+            deletes: MutableList<PendingDelete>,
+        ) {
             progress.startFile(display(uf.file), uf.file.size)
-            // 이미 있던 파일을 가리키는 행. 그 파일의 주인 행과 겹치지 않게 단위에서 떼어 둔다(검토에 두 번 나오지 않게).
-            val row = newRow(uf, UnitKeys.duplicate(session.id, uf.file.relPath), isPrimary = false, capturedAt = capturedAt).copy(
+            val adopted = memberKey != null
+            val primary = adopted && isPrimary
+            val unitKey = memberKey ?: UnitKeys.duplicate(session.id, uf.file.relPath)
+            val row = newRow(uf, unitKey, isPrimary = primary, capturedAt = capturedAt).copy(
                 dstPath = slot.existing.path,
                 fileName = slot.existing.name,
                 sha256 = slot.sha256,
@@ -579,7 +677,8 @@ class ImportEngine(
             )
             val id = ledger.insertItem(row)
             duplicates++
-            if (request.moveMode) deletes += PendingDelete(uf.file, id, slot.existing)
+            if (primary && uf.kind.mediaType != MediaType.RAW) runCatching { onMediaVerified() }
+            if (request.moveMode) deletes += PendingDelete(uf.file, id, slot.existing, synced = false)
             progress.finishFile()
         }
 
@@ -619,30 +718,53 @@ class ImportEngine(
 
         // ---------------------------------------------------------------- 원본 삭제
 
-        /** 6. 이동 모드: 검증된(또는 같은 내용이 확인된) 복사본이 있을 때만 카드 원본 삭제 */
+        /** 6. 이동 모드: 검증된(또는 같은 내용이 확인된) 복사본이 디스크에 기록돼 있을 때만 카드 원본 삭제 */
         private suspend fun deleteSource(d: PendingDelete) = withContext(NonCancellable) {
             // 마지막 안전 확인: 근거가 된 폰 복사본이 그대로 있고 크기가 같다
             if (!d.copy.isFile || d.copy.length() != d.file.size) return@withContext
+            // 복사본이 디스크까지 기록됐는지 확인(fsync). 못 하면 카드에 남긴다
+            if (!d.synced && !syncQuietly(d.copy)) {
+                keepSource(d)
+                return@withContext
+            }
+            // 쓰기 금지 카드: 처음 몇 개가 모두 실패했으면 남은 파일은 시도하지 않는다
+            if (sourceReadOnly) {
+                keepSource(d)
+                return@withContext
+            }
             val deleted = runCatching { source.delete(d.file) }.getOrDefault(false)
-            val gone = if (deleted) {
-                true
-            } else {
-                if (cardGone()) throw CardRemovedSignal()
-                !source.exists(d.file)
+            val gone = when {
+                deleted -> true
+                // 카드는 그대로 있고 이 파일만 지워지지 않음(쓰기 금지 등): 분리 여부를 기다릴 필요가 없다
+                runCatching { source.exists(d.file) }.getOrDefault(false) -> false
+                else -> {
+                    // 파일이 안 보이거나 확인할 수 없음: 카드가 빠졌는지 잠깐 기다려 본다
+                    if (cardGone()) throw CardRemovedSignal()
+                    !runCatching { source.exists(d.file) }.getOrDefault(true)
+                }
             }
-            val row = ledger.getItem(d.rowId)
             if (gone) {
-                if (row != null && (row.importStatus == ImportStatus.VERIFIED || row.importStatus == ImportStatus.SOURCE_DELETE_FAILED)) {
-                    ledger.updateItem(row.copy(importStatus = ImportStatus.SOURCE_DELETED, updatedAt = clock()))
-                }
+                deletedSources++
+                ledger.setStatusIf(d.rowId, DELETABLE_STATUSES, ImportStatus.SOURCE_DELETED, clock())
             } else {
-                // 쓰기 금지 스위치 등. 폰 복사본은 유지
-                deleteFailed++
-                failures += ImportFailure(display(d.file), FailureReason.SOURCE_DELETE_FAILED, null)
-                if (row != null && row.importStatus == ImportStatus.VERIFIED) {
-                    ledger.updateItem(row.copy(importStatus = ImportStatus.SOURCE_DELETE_FAILED, updatedAt = clock()))
-                }
+                undeletable++
+                if (deletedSources == 0 && undeletable >= READ_ONLY_AFTER_FAILURES) sourceReadOnly = true
+                keepSource(d)
             }
+        }
+
+        /** 카드 원본을 지우지 못함(쓰기 금지 등). 폰 복사본은 유지 */
+        private suspend fun keepSource(d: PendingDelete) {
+            deleteFailed++
+            failures += ImportFailure(display(d.file), FailureReason.SOURCE_DELETE_FAILED, null)
+            ledger.setStatusIf(d.rowId, setOf(ImportStatus.VERIFIED), ImportStatus.SOURCE_DELETE_FAILED, clock())
+        }
+
+        private fun syncQuietly(file: File): Boolean = try {
+            io.syncRenamed(file)
+            true
+        } catch (e: Exception) {
+            false
         }
 
         // ---------------------------------------------------------------- 보조
@@ -685,6 +807,14 @@ class ImportEngine(
         /** 가져오는 도중 폰 여유 공간이 이 아래로 내려가면 멈춘다(시작 전 확인은 2GB 여유) */
         const val RUNNING_MARGIN_BYTES: Long = 256L * 1024 * 1024
         private const val REMOVAL_POLL_MS = 250L
+
+        /** 같은 촬영으로 보는 수정 시각 차이(JPG와 CR3는 1~2초 안에 기록된다. FAT은 2초 단위) */
+        const val SAME_EXPOSURE_MS = 2_000L
+
+        /** 처음 이만큼의 원본 삭제가 모두 실패하면(파일은 그대로) 쓰기 금지 카드로 보고 남은 삭제를 건너뛴다 */
+        const val READ_ONLY_AFTER_FAILURES = 3
+
+        private val DELETABLE_STATUSES = setOf(ImportStatus.VERIFIED, ImportStatus.SOURCE_DELETE_FAILED)
         private val SUFFIX = Regex("_\\d+")
 
         /** 사진 단위가 짝으로 보일 수 있는 확장자 */
