@@ -21,10 +21,17 @@ class FakeUpdateHttp : UpdateHttp {
         apply { routes[url] = Route.Bytes(code, bytes, contentLength, failAfter) }
     fun networkError(url: String) = apply { routes[url] = Route.NetworkError }
 
+    /** 다음 한 번만 연결이 끊기고, 그 뒤로는 원래 응답 */
+    fun networkErrorOnce(url: String) = apply { oneShot.getOrPut(url) { ArrayDeque() }.addLast(Route.NetworkError) }
+
+    private val oneShot = mutableMapOf<String, ArrayDeque<Route>>()
+
+    private fun route(url: String): Route? = oneShot[url]?.removeFirstOrNull() ?: routes[url]
+
     override fun getText(url: String, headers: Map<String, String>, maxBytes: Int): HttpText {
         requests += url
         requestHeaders[url] = headers
-        return when (val r = routes[url]) {
+        return when (val r = route(url)) {
             null -> HttpText(404, "")
             is Route.Text -> HttpText(r.code, if (r.code in 200..299) r.body else "")
             is Route.Bytes -> HttpText(r.code, String(r.bytes))
@@ -34,7 +41,7 @@ class FakeUpdateHttp : UpdateHttp {
 
     override fun openStream(url: String): HttpStream {
         requests += url
-        return when (val r = routes[url]) {
+        return when (val r = route(url)) {
             null -> HttpStream(404, -1, null)
             is Route.Text -> HttpStream(r.code, r.body.length.toLong(), if (r.code in 200..299) ByteArrayInputStream(r.body.toByteArray()) else null)
             is Route.Bytes -> HttpStream(

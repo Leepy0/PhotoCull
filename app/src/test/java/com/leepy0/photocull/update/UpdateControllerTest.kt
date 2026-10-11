@@ -1,6 +1,7 @@
 package com.leepy0.photocull.update
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageInstaller
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -76,7 +77,10 @@ class UpdateControllerTest {
             clock = { now },
             repo = REPO,
             downloadDir = downloadDir,
+            prompter = prompter,
         )
+
+    private val prompter = FakePrompter()
 
     private fun serveRelease(sha: String = apkSha) {
         http.text(MANIFEST_URL, 200, TestReleases.manifest(sha = sha, size = apkBytes.size.toLong()))
@@ -243,10 +247,188 @@ class UpdateControllerTest {
         assertThat(s.message).isEqualTo(context.getString(R.string.update_err_no_permission))
         assertThat(s.fix).contains("설치 허용하러 가기")
         assertThat(c.installPermissionSettingsIntent().data.toString()).isEqualTo("package:${context.packageName}")
-        // 허용 후 다시 시도하면 설치 단계로 돌아간다.
+        // 설정에서 허용하고 돌아오면(화면 재개) 낡은 '권한 없음'을 걷어 바로 [설치] 단계로
+        c.onAppResumed()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
         shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
-        c.dismissError()
+        c.onAppResumed()
         assertThat(c.state.value).isInstanceOf(UpdateState.ReadyToInstall::class.java)
+    }
+
+    @Test fun importBlockClearsByItselfWhenImportEnds() = runTest {
+        val c = readyController()
+        importRunning = true
+        assertThat(c.isInstallBlockedByImport()).isTrue()
+        c.install()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+        c.refreshBlockedFailure()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+        importRunning = false
+        c.refreshBlockedFailure()
+        assertThat(c.state.value).isInstanceOf(UpdateState.ReadyToInstall::class.java)
+    }
+
+    @Test fun otherFailuresAreNotClearedOnResume() = runTest {
+        serveRelease(sha = "e".repeat(64))
+        val c = controller()
+        c.check(true)
+        advanceUntilIdle()
+        c.download()
+        advanceUntilIdle()
+        c.onAppResumed()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+    }
+
+    // ---- 설치 확인 화면(앱이 가려져 있으면 시스템이 막는다) ----
+
+    @Test fun confirmationWhileVisibleOpensRightAway() = runTest {
+        val c = readyController()
+        c.install()
+        runCurrent()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        assertThat(c.onConfirmationRequired(confirm, appInForeground = true)).isTrue()
+        assertThat(prompter.launched).containsExactly(confirm)
+        assertThat(prompter.notified).isEmpty()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Installing::class.java)
+    }
+
+    @Test fun confirmationInBackgroundWaitsForResumeAndPostsNotification() = runTest {
+        val c = readyController()
+        c.install()
+        runCurrent()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        assertThat(c.onConfirmationRequired(confirm, appInForeground = false)).isTrue()
+        // 바로 띄우지 않고(조용히 막힘) 알림으로 열 수 있게
+        assertThat(prompter.launched).isEmpty()
+        assertThat(prompter.notified.single()).isEqualTo(confirm to "0.2.0")
+        assertThat(c.state.value).isInstanceOf(UpdateState.Installing::class.java)
+
+        c.onAppResumed()
+        assertThat(prompter.launched).containsExactly(confirm)
+        assertThat(prompter.cancelled).isEqualTo(1)
+        // 한 번만
+        c.onAppResumed()
+        assertThat(prompter.launched).hasSize(1)
+    }
+
+    @Test fun confirmationThatCannotOpenIsAFailure() = runTest {
+        val c = readyController()
+        c.install()
+        runCurrent()
+        prompter.launchWorks = false
+        assertThat(c.onConfirmationRequired(Intent("x"), appInForeground = true)).isFalse()
+        val s = c.state.value as UpdateState.Failed
+        assertThat(s.message).isEqualTo(context.getString(R.string.update_err_confirm_ui))
+    }
+
+    // ---- 백그라운드에서 끊긴 받기 ----
+
+    @Test fun downloadCutWhileInBackgroundRetriesOnceWhenBack() = runTest {
+        serveRelease()
+        val c = controller()
+        c.check(true)
+        advanceUntilIdle()
+        http.networkErrorOnce(APK_URL)
+        c.download()
+        c.onAppPaused()
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+
+        c.onAppResumed()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Downloading::class.java)
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.ReadyToInstall::class.java)
+    }
+
+    @Test fun downloadCutAfterBeingBackgroundedRetriesImmediatelyIfAlreadyBack() = runTest {
+        serveRelease()
+        val c = controller()
+        c.check(true)
+        advanceUntilIdle()
+        http.networkErrorOnce(APK_URL)
+        c.download()
+        c.onAppPaused()
+        c.onAppResumed()
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.ReadyToInstall::class.java)
+        assertThat(http.requests.count { it == APK_URL }).isEqualTo(2)
+    }
+
+    @Test fun autoRetryHappensOnlyOnceAndNotForForegroundFailures() = runTest {
+        serveRelease()
+        val c = controller()
+        c.check(true)
+        advanceUntilIdle()
+        // 앱을 보고 있는 동안 끊김: 자동으로 다시 받지 않는다(사용자가 [다시 시도])
+        http.networkErrorOnce(APK_URL)
+        c.download()
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+        c.onAppResumed()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+
+        // 백그라운드에서 두 번 끊김: 돌아왔을 때 한 번만 다시
+        c.dismissError()
+        http.networkErrorOnce(APK_URL).networkErrorOnce(APK_URL)
+        c.download()
+        c.onAppPaused()
+        advanceUntilIdle()
+        c.onAppResumed()
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+        c.onAppPaused()
+        c.onAppResumed()
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
+    }
+
+    // ---- 확인이 삼켜지거나 막히지 않게 ----
+
+    @Test fun userCheckDuringSkippedAutoCheckStillChecks() = runTest {
+        serveRelease()
+        prefs.lastCheck = now - 60 * 60 * 1000L // 6시간이 안 지나 자동 확인은 아무것도 안 하고 끝난다
+        val c = controller()
+        c.check(userInitiated = false)
+        // 자동 확인이 도는 중에 사용자가 업데이트 시트를 열었다
+        c.check(userInitiated = true)
+        advanceUntilIdle()
+        assertThat(c.state.value).isInstanceOf(UpdateState.Available::class.java)
+        assertThat(http.requests).contains(MANIFEST_URL)
+    }
+
+    @Test fun knownVersionIsReplacedOnlyByANewerOne() = runTest {
+        serveRelease()
+        val c = controller()
+        c.check(true)
+        advanceUntilIdle()
+        val first = c.state.value as UpdateState.Available
+        assertThat(first.info.versionCode).isEqualTo(200)
+
+        // 같은 버전 → 그대로(확인 중 화면으로 바꾸지도 않는다)
+        c.check(true)
+        assertThat(c.state.value).isEqualTo(first)
+        advanceUntilIdle()
+        assertThat(c.state.value).isEqualTo(first)
+
+        // 확인 실패 → 알고 있던 새 버전을 그대로 보여준다
+        http.networkError(MANIFEST_URL).networkError(API_URL)
+        c.check(true)
+        advanceUntilIdle()
+        assertThat(c.state.value).isEqualTo(first)
+
+        // 더 새 핫픽스 → 바꾼다
+        http.text(MANIFEST_URL, 200, TestReleases.manifest(version = "0.2.1", versionCode = 201, sha = apkSha, size = apkBytes.size.toLong()))
+        c.check(true)
+        advanceUntilIdle()
+        assertThat((c.state.value as UpdateState.Available).info.versionName).isEqualTo("0.2.1")
+    }
+
+    @Test fun readyToInstallStillLooksForAHotfix() = runTest {
+        val c = readyController()
+        http.text(MANIFEST_URL, 200, TestReleases.manifest(version = "0.2.1", versionCode = 201, sha = apkSha, size = apkBytes.size.toLong()))
+        c.check(true)
+        advanceUntilIdle()
+        assertThat((c.state.value as UpdateState.Available).info.versionCode).isEqualTo(201)
     }
 
     @Test fun installCommitsSessionAndReceiverFailureIsShown() = runTest {
@@ -360,6 +542,19 @@ class UpdateControllerTest {
         override suspend fun setLastCheckAt(v: Long) { lastCheck = v }
         override suspend fun lastRunVersionCode() = lastRun
         override suspend fun setLastRunVersionCode(v: Int) { lastRun = v }
+    }
+
+    class FakePrompter : InstallPrompter {
+        var launchWorks = true
+        val launched = mutableListOf<Intent>()
+        val notified = mutableListOf<Pair<Intent, String?>>()
+        var cancelled = 0
+        override fun launch(confirm: Intent): Boolean {
+            if (launchWorks) launched += confirm
+            return launchWorks
+        }
+        override fun notify(confirm: Intent, versionName: String?) { notified += confirm to versionName }
+        override fun cancelNotification() { cancelled++ }
     }
 
     class FakeScheduler : UpdateScheduler {

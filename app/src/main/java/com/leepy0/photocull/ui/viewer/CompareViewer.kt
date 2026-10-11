@@ -25,14 +25,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * 같은 위치 비교 상태. 다른 장으로 바꿔도 확대 배율과 위치([view])를 그대로 옮겨 적용한다.
+ * 같은 위치 비교 상태. 다른 장으로 바꿔도 원본 픽셀 기준 배율과 위치([view])를 옮겨 적용한다
+ * (해상도가 달라도 같은 100%, 가로/세로 비가 다르면 위치 대신 그 장의 가장 선명한 곳).
  * [view]가 null이면 아직 아무 장도 준비되지 않은 상태(첫 장은 가장 선명한 위치 100%로 연다).
  */
 @Stable
 class CompareViewerState internal constructor(startAtFocus: Boolean) {
     internal val startAtFocus: Boolean = startAtFocus
 
-    var view: NormalizedView? by mutableStateOf(null)
+    var view: SharedView? by mutableStateOf(null)
         internal set
 
     /** 지금 보이고 조작 가능한 장의 확대 상태 */
@@ -74,7 +75,7 @@ fun CompareViewer(
         }
         ZoomablePhoto(
             state = zoom,
-            initialView = { s -> state.view ?: if (state.startAtFocus) s.focusView() else null },
+            initialView = { s -> state.view?.let(s::viewFor) ?: if (state.startAtFocus) s.focusView() else null },
             modifier = modifier.fillMaxSize().background(ViewerColors.background),
         )
         return
@@ -133,36 +134,39 @@ private fun CompareLayer(
         state = zoom,
         crossfade = false,
         gesturesEnabled = interactive && applied,
-        // 처음 열 때만 가장 선명한 위치, 그 뒤로는 직전 장의 상태를 그대로
-        initialView = { s -> compare.view ?: if (compare.startAtFocus) s.focusView() else null },
+        // 처음 열 때만 가장 선명한 위치, 그 뒤로는 직전 장의 상태를 원본 픽셀 기준으로 옮겨서
+        initialView = { s -> compare.view?.let(s::viewFor) ?: if (compare.startAtFocus) s.focusView() else null },
         onInitialViewApplied = { applied = true },
         onTap = onTap,
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = if (isPending && !applied && !zoom.isMissing) 0f else 1f },
+            .graphicsLayer { alpha = if (isPending && !applied && !zoom.hasFailed) 0f else 1f },
     )
 
     // 준비 중인 장: 확대 적용 + 고해상도 타일이 그려지면(또는 잠시 뒤) 교체.
-    // 파일이 없거나 디코딩이 끝내 안 되면 오래 기다리지 않고 바꿔 안내 문구를 보여준다.
+    // 파일이 없거나 손상돼 열 수 없으면 기다리지 않고 바꿔 그 장의 안내 문구를 보여준다
+    // (빈 화면에서 계속 도는 대신). 실패한 장은 비교 상태를 바꾸지 않는다.
     LaunchedEffect(zoom) {
-        withTimeoutOrNull(READY_TIMEOUT_MS) { snapshotFlow { applied || zoom.isMissing }.first { it } }
+        withTimeoutOrNull(READY_TIMEOUT_MS) { snapshotFlow { applied || zoom.hasFailed }.first { it } }
         if (currentIsPending) {
-            withTimeoutOrNull(SWAP_TIMEOUT_MS) { snapshotFlow { zoom.isFullQuality }.first { it } }
-            // 한 프레임 쉬어 타일이 실제로 그려진 뒤 바꾼다
-            delay(FRAME_MS)
+            if (!zoom.hasFailed) {
+                withTimeoutOrNull(SWAP_TIMEOUT_MS) { snapshotFlow { zoom.isFullQuality || zoom.hasFailed }.first { it } }
+                // 한 프레임 쉬어 타일이 실제로 그려진 뒤 바꾼다
+                delay(FRAME_MS)
+            }
             currentOnReady()
         }
     }
 
-    // 보이는 장만 비교 상태를 갱신한다(사용자가 확대·이동한 결과)
-    if (!isPending) {
+    // 보이는 장만 비교 상태를 갱신한다(사용자가 확대·이동한 결과). 열지 못한 장은 조작 대상이 아니다.
+    if (!isPending && !zoom.hasFailed) {
         DisposableEffect(zoom) {
             compare.active = zoom
             onDispose { if (compare.active === zoom) compare.active = null }
         }
         LaunchedEffect(zoom) {
             snapshotFlow { applied }.first { it }
-            snapshotFlow { zoom.currentView() }.collect { v -> if (v != null) compare.view = v }
+            snapshotFlow { zoom.sharedView() }.collect { v -> if (v != null) compare.view = v }
         }
     }
 }

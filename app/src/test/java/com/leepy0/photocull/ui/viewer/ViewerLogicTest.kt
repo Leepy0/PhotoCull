@@ -35,6 +35,41 @@ class ViewerLogicTest {
         assertThat(ZoomMath.sameAspect(4000f, 6000f, 6000f, 4000f)).isFalse()
     }
 
+    @Test fun compareKeepsSamePixelZoomAcrossResolutions() {
+        // 6000px 장을 100%(원본 대비 1)로 보던 중 3000px 장으로: 그 장도 원본 100%
+        val shared = SharedView(originalZoom = 1f, centerX = 0.3f, centerY = 0.6f, aspect = 1.5f)
+        // 3000px 원본을 그대로 디코딩(원본 100% = 최종 배율 1), 화면 맞춤 0.36
+        val view = ZoomMath.transfer(shared, targetAspect = 1.5f, focusX = 0.9f, focusY = 0.9f, fitScale = 0.36f, originalFinalZoom = 1f)
+        assertThat(view.userZoom).isWithin(1e-4f).of(1f / 0.36f)
+        // 가로/세로 비가 같으면 같은 위치
+        assertThat(view.centerX).isEqualTo(0.3f)
+        assertThat(view.centerY).isEqualTo(0.6f)
+    }
+
+    @Test fun compareDoesNotMovePositionAcrossOrientations() {
+        val shared = SharedView(originalZoom = 1f, centerX = 0.1f, centerY = 0.2f, aspect = 1.5f)
+        // 세로 사진: 같은 비율 위치는 다른 곳을 가리키므로 그 장의 가장 선명한 곳으로
+        val view = ZoomMath.transfer(shared, targetAspect = 2f / 3f, focusX = 0.7f, focusY = 0.4f, fitScale = 0.18f, originalFinalZoom = 1f)
+        assertThat(view.centerX).isEqualTo(0.7f)
+        assertThat(view.centerY).isEqualTo(0.4f)
+        assertThat(view.isZoomedIn).isTrue()
+    }
+
+    @Test fun compareFitStaysFitAndTinyFramesStillZoomIn() {
+        val fit = SharedView(originalZoom = null, centerX = 0.2f, centerY = 0.2f, aspect = 1.5f)
+        assertThat(ZoomMath.transfer(fit, 1.5f, 0.5f, 0.5f, fitScale = 0.18f, originalFinalZoom = 1f).isZoomedIn).isFalse()
+        // 화면보다 작은 장은 원본 100%가 전체 보기보다 작다 → 화면 맞춤의 2배
+        val zoomed = SharedView(originalZoom = 1f, centerX = 0.5f, centerY = 0.5f, aspect = 1.5f)
+        val small = ZoomMath.transfer(zoomed, 1.5f, 0.5f, 0.5f, fitScale = 2f, originalFinalZoom = 1f)
+        assertThat(small.userZoom).isEqualTo(ZoomMath.MIN_STEP_OF_FIT)
+    }
+
+    @Test fun originalZoomRoundTrip() {
+        // 미리보기(1500px)가 콘텐츠: 원본 100% = 최종 배율 4. 화면 맞춤 0.72에서 userZoom 5.555 = 최종 4 = 원본 100%
+        val userZoom = 4f / 0.72f
+        assertThat(ZoomMath.toOriginalZoom(userZoom, fitScale = 0.72f, originalFinalZoom = 4f)).isWithin(1e-4f).of(1f)
+    }
+
     @Test fun focusFallsBackToCenter() {
         assertThat(ZoomMath.focusOrCenter(null)).isEqualTo(0.5f)
         assertThat(ZoomMath.focusOrCenter(Float.NaN)).isEqualTo(0.5f)

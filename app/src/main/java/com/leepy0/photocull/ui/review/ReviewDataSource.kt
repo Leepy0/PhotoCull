@@ -36,6 +36,21 @@ interface ReviewDataSource {
     suspend fun moveToTrash(ids: Collection<Long>, keepIds: Collection<Long>): TrashResult
     suspend fun undoTrash(batch: TrashBatch)
     suspend fun pinBest(groupId: Long, itemId: Long)
+
+    /** 연사/유사 그룹을 다시 묶는다(백그라운드에서, 기다리지 않음) */
+    fun regroup()
+}
+
+/** 스낵바 [실행 취소]: 휴지통 이동·유지를 되돌린다. 일괄 정리였으면 그룹도 다시 묶는다. */
+internal suspend fun ReviewDataSource.undo(message: ReviewMessage) {
+    when (message) {
+        is ReviewMessage.Trashed -> {
+            undoTrash(message.batch)
+            if (message.regroupOnUndo) regroup()
+        }
+        is ReviewMessage.Kept -> unkeep(message.ids)
+        else -> Unit
+    }
 }
 
 class ContainerReviewDataSource(private val container: AppContainer) : ReviewDataSource {
@@ -55,4 +70,5 @@ class ContainerReviewDataSource(private val container: AppContainer) : ReviewDat
 
     override suspend fun undoTrash(batch: TrashBatch) = container.trash.undo(batch)
     override suspend fun pinBest(groupId: Long, itemId: Long) = container.review.pinBest(groupId, itemId)
+    override fun regroup() = container.analysis.regroup()
 }

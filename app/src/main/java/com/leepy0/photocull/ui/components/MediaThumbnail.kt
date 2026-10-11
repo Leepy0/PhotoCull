@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -26,10 +27,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.leepy0.photocull.R
 import com.leepy0.photocull.ui.theme.Spacing
 import com.leepy0.photocull.ui.theme.ViewerColors
 import java.io.File
@@ -66,6 +68,8 @@ fun MediaThumbnail(
 /**
  * 선택 가능한 그리드 칸. 사진을 누르면 [onOpen](상세 보기), 오른쪽 위 체크 영역(48dp)을 누르면 [onToggle].
  * 삭제 대상으로 선택되면 오류 색 테두리 + 체크 아이콘으로 표시한다(색만으로 구분하지 않음).
+ * 체크 영역은 '삭제 대상' 체크박스로 읽히고 선택 여부를 상태로 알려 준다.
+ * [selectable] = false면 체크 영역을 두지 않는다(예: 그룹의 베스트는 지울 수 없음).
  */
 @Composable
 fun SelectableThumbnail(
@@ -80,21 +84,23 @@ fun SelectableThumbnail(
     label: String? = null,
     /** 왼쪽 위 배지(예: 베스트) */
     badge: (@Composable () -> Unit)? = null,
+    selectable: Boolean = true,
 ) {
     val shape = MaterialTheme.shapes.extraSmall
     val selectedColor = MaterialTheme.colorScheme.error
+    val openLabel = stringResource(R.string.thumb_open)
+    val markLabel = stringResource(R.string.thumb_mark)
     Box(
         modifier
             .aspectRatio(1f)
             .clip(shape)
-            .then(if (selected) Modifier.border(Spacing.xxs, selectedColor, shape) else Modifier)
-            .semantics { this.selected = selected },
+            .then(if (selected) Modifier.border(Spacing.xxs, selectedColor, shape) else Modifier),
     ) {
         MediaThumbnail(
             path = path,
             contentDescription = contentDescription,
             isVideo = isVideo,
-            modifier = Modifier.fillMaxSize().clickable(onClickLabel = "크게 보기", role = Role.Image, onClick = onOpen),
+            modifier = Modifier.fillMaxSize().clickable(onClickLabel = openLabel, role = Role.Image, onClick = onOpen),
         )
         if (badge != null) {
             Box(Modifier.align(Alignment.TopStart).padding(Spacing.xxs)) { badge() }
@@ -113,12 +119,13 @@ fun SelectableThumbnail(
                 )
             }
         }
+        if (!selectable) return@Box
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .size(Spacing.touchTarget)
-                .clickable(role = Role.Checkbox, onClick = onToggle)
-                .semantics { this.contentDescription = if (selected) "삭제 선택 해제" else "삭제 대상으로 선택" },
+                .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() })
+                .semantics { this.contentDescription = markLabel },
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {

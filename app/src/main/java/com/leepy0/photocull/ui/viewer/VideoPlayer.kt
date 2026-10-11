@@ -3,6 +3,9 @@ package com.leepy0.photocull.ui.viewer
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.foundation.clickable
@@ -59,7 +62,11 @@ import com.leepy0.photocull.util.Format
 import kotlinx.coroutines.delay
 import java.io.File
 
-/** 영상 1개의 재생 상태. VideoView를 감싼다(앱 안에서 바로 재생). */
+/**
+ * 영상 1개의 재생 상태. VideoView를 감싼다(앱 안에서 바로 재생).
+ * 오디오 포커스는 열 때가 아니라 재생할 때만 잠깐 가져온다(뷰어를 열거나 옆 영상으로 넘기기만 해도
+ * 듣던 음악이 멈추지 않게). 멈추면 돌려준다.
+ */
 @Stable
 class VideoPlaybackState internal constructor() {
     var isPlaying by mutableStateOf(false)
@@ -78,10 +85,12 @@ class VideoPlaybackState internal constructor() {
         private set
 
     internal var view: VideoView? = null
+    internal var audio: PlaybackAudioFocus? = null
 
     fun play() {
         val v = view ?: return
         if (hasError) return
+        audio?.request()
         if (durationMs > 0 && positionMs >= durationMs - END_TOLERANCE_MS) v.seekTo(0)
         v.start()
         isPlaying = true
@@ -91,6 +100,7 @@ class VideoPlaybackState internal constructor() {
     fun pause() {
         view?.takeIf { it.isPlaying }?.pause()
         isPlaying = false
+        audio?.abandon()
     }
 
     fun toggle() = if (isPlaying) pause() else play()
@@ -104,11 +114,14 @@ class VideoPlaybackState internal constructor() {
     internal fun onCompleted() {
         isPlaying = false
         positionMs = durationMs
+        audio?.abandon()
     }
 
     internal fun onReleased() {
         view = null
         isPlaying = false
+        audio?.abandon()
+        audio = null
     }
 
     private companion object {
@@ -118,6 +131,40 @@ class VideoPlaybackState internal constructor() {
 
 @Composable
 fun rememberVideoPlaybackState(key: Any?): VideoPlaybackState = remember(key) { VideoPlaybackState() }
+
+/**
+ * 재생하는 동안만 쥐는 오디오 포커스(잠깐 가져옴: 끝나면 다른 앱 음악이 이어진다).
+ * 다른 앱이 포커스를 가져가면 [onLoss]로 멈춘다.
+ */
+internal class PlaybackAudioFocus(context: Context, private val onLoss: () -> Unit) {
+    private val manager = context.getSystemService(AudioManager::class.java)
+    private var held = false
+    private val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                .build(),
+        )
+        .setOnAudioFocusChangeListener { change ->
+            if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                held = false
+                onLoss()
+            }
+        }
+        .build()
+
+    fun request() {
+        if (held || manager == null) return
+        held = runCatching { manager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED }.getOrDefault(false)
+    }
+
+    fun abandon() {
+        if (!held || manager == null) return
+        runCatching { manager.abandonAudioFocusRequest(request) }
+        held = false
+    }
+}
 
 /**
  * 영상 재생 화면(VideoView). 탭하면 재생/일시정지. [isCurrent]가 아니면(옆 페이지로 넘기면) 멈춘다.
@@ -164,6 +211,9 @@ fun VideoPlayer(
             AndroidView(
                 factory = { ctx ->
                     VideoView(ctx).apply {
+                        // 준비·첫 프레임 그리기만으로 다른 앱의 음악을 멈추지 않게: 포커스는 재생할 때 따로 요청
+                        setAudioFocusRequest(AudioManager.AUDIOFOCUS_NONE)
+                        state.audio = PlaybackAudioFocus(ctx) { post { state.pause() } }
                         setOnPreparedListener { mp ->
                             state.durationMs = mp.duration.toLong().coerceAtLeast(0L)
                             state.isPrepared = true

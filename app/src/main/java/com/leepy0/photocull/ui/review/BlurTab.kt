@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -20,6 +22,11 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,6 +44,8 @@ import kotlin.math.roundToInt
 /**
  * 흐림 탭: 민감도(즉시 반영) + 모두 선택/해제 + 흐린 순 그리드.
  * 펼친 화면([twoPane])에서는 오른쪽에 고른 사진을 100%로 보여준다(오버레이 대신).
+ * 미리보기에서 [삭제 대상으로 표시]를 누르면 다음 사진으로 넘어간다([onPreview]).
+ * [gridState]는 바깥에서 받아 1단 ↔ 2단(폴드 접기·펴기)에도 스크롤 위치가 유지된다.
  */
 @Composable
 internal fun BlurTab(
@@ -47,6 +56,8 @@ internal fun BlurTab(
     onOpen: (MediaCard) -> Unit,
     empty: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    gridState: LazyGridState = rememberLazyGridState(),
+    onPreview: (MediaCard) -> Unit = onOpen,
 ) {
     val header: @Composable () -> Unit = {
         BlurHeader(
@@ -67,6 +78,7 @@ internal fun BlurTab(
                     items = state.blur,
                     selection = state.blurSelection,
                     previewId = null,
+                    gridState = gridState,
                     onToggle = { actions.onToggle(ReviewTab.BLUR, it) },
                     onOpen = onOpen,
                     modifier = Modifier.fillMaxSize(),
@@ -77,6 +89,16 @@ internal fun BlurTab(
     }
     // 펼친 화면: 왼쪽(민감도 + 그리드) · 오른쪽(고른 사진 100% 미리보기)
     val preview = state.blur.firstOrNull { it.id == previewId } ?: state.blur.first()
+    val index = state.blur.indexOf(preview)
+    val previous = state.blur.getOrNull(index - 1)
+    val next = state.blur.getOrNull(index + 1)
+    // 미리보기를 [이전]/[다음]으로 옮기면 왼쪽 목록도 그 칸이 보이게(처음 그릴 때·회전 뒤에는 보던 스크롤 유지)
+    var scrolledFor by rememberSaveable { mutableStateOf(preview.id) }
+    LaunchedEffect(preview.id) {
+        if (scrolledFor == preview.id) return@LaunchedEffect
+        scrolledFor = preview.id
+        if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.animateScrollToItem(index)
+    }
     Row(
         modifier.fillMaxSize().padding(end = Spacing.m, bottom = Spacing.m),
         horizontalArrangement = Arrangement.spacedBy(Spacing.m),
@@ -87,6 +109,7 @@ internal fun BlurTab(
                 items = state.blur,
                 selection = state.blurSelection,
                 previewId = preview.id,
+                gridState = gridState,
                 onToggle = { actions.onToggle(ReviewTab.BLUR, it) },
                 onOpen = onOpen,
                 modifier = Modifier.fillMaxSize(),
@@ -95,14 +118,20 @@ internal fun BlurTab(
         val marked = preview.id in state.blurSelection
         PhotoPreviewPane(
             card = preview,
-            position = state.blur.indexOf(preview) + 1,
+            position = index + 1,
             total = state.blur.size,
             modifier = Modifier.weight(PREVIEW_WEIGHT).fillMaxHeight().padding(top = Spacing.s),
+            onPrevious = previous?.let { { onPreview(it) } },
+            onNext = next?.let { { onPreview(it) } },
             bottomBar = { card ->
                 MarkForDeletionToggle(
                     marked = marked,
                     compact = true,
-                    onToggle = { actions.onSetMarked(ReviewTab.BLUR, card.id, !marked) },
+                    onToggle = {
+                        actions.onSetMarked(ReviewTab.BLUR, card.id, !marked)
+                        // 표시했으면 바로 다음 사진으로
+                        if (!marked && next != null) onPreview(next)
+                    },
                 )
             },
         )
@@ -179,12 +208,14 @@ private fun BlurGrid(
     items: List<MediaCard>,
     selection: Set<Long>,
     previewId: Long?,
+    gridState: LazyGridState,
     onToggle: (Long) -> Unit,
     onOpen: (MediaCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(Spacing.gridCellMin),
+        state = gridState,
         contentPadding = PaddingValues(start = Spacing.m, end = if (previewId != null) Spacing.zero else Spacing.m, bottom = Spacing.m),
         horizontalArrangement = Arrangement.spacedBy(Spacing.gridGap),
         verticalArrangement = Arrangement.spacedBy(Spacing.gridGap),

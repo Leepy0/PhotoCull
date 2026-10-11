@@ -47,7 +47,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -90,30 +89,23 @@ data class GroupActions(
 
 /**
  * 연사/유사 그룹 정리: 큰 확대 뷰어(같은 위치 비교) + 필름스트립(접힘: 아래 가로, 펼침: 오른쪽 그리드).
- * 기본 선택 = 베스트 외 전부. 삭제하면 나머지는 '남기기'로 처리하고 검토 화면으로 돌아가 실행 취소 스낵바를 띄운다.
+ * 기본 선택 = 베스트 외 전부(베스트는 지울 수 없다). 삭제하면 나머지는 '유지'로 처리하고 검토 화면으로 돌아간다.
+ * 결과(실행 취소 스낵바)는 검토 화면과 함께 쓰는 [ReviewEvents]로 알려, 어느 화면에서든 되돌릴 수 있다.
+ * [onDone]: 정리를 마쳐 화면을 닫을 때(기본은 [onBack]).
  */
 @Composable
-fun GroupScreen(groupId: Long, onBack: () -> Unit) {
+fun GroupScreen(groupId: Long, onBack: () -> Unit, onDone: () -> Unit = onBack) {
     val container = LocalAppContainer.current
-    val vm: GroupViewModel = viewModel(key = "group-$groupId") { GroupViewModel(container, groupId) }
-    val state by vm.state.collectAsStateWithLifecycle()
     val events = rememberReviewEvents()
+    val vm: GroupViewModel = viewModel(key = "group-$groupId") { GroupViewModel(container, groupId, events) }
+    val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    val currentOnBack by rememberUpdatedState(onBack)
+    val currentOnDone by rememberUpdatedState(onDone)
 
     LaunchedEffect(vm) {
-        vm.finished.collect { message ->
-            events.post(message)
-            currentOnBack()
-        }
+        vm.finished.collect { currentOnDone() }
     }
-    LaunchedEffect(vm) {
-        vm.messages.collect { message ->
-            snackbar.currentSnackbarData?.dismiss()
-            launch { snackbar.showReviewMessage(context, message) { } }
-        }
-    }
+    ReviewMessagesEffect(events, snackbar, onUndo = vm::undo)
 
     GroupContent(
         state = state,
@@ -270,14 +262,20 @@ private fun FrameActions(state: GroupUiState.Content, actions: GroupActions, mod
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
+        // 베스트는 지울 수 없다(지우려면 다른 사진을 먼저 베스트로 지정)
         FilterChip(
             selected = marked,
             onClick = { actions.onSetMarked(current.id, !marked) },
-            label = { Text(stringResource(R.string.review_group_mark_delete)) },
-            leadingIcon = if (marked) {
-                { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-            } else {
-                null
+            enabled = !isBest && !state.busy,
+            label = { Text(stringResource(if (isBest) R.string.review_group_best_locked else R.string.review_group_mark_delete)) },
+            leadingIcon = when {
+                isBest -> {
+                    { Icon(Icons.Outlined.Star, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                }
+                marked -> {
+                    { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                }
+                else -> null
             },
             colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
@@ -356,6 +354,7 @@ private fun FrameCell(state: GroupUiState.Content, member: MediaCard, actions: G
             onToggle = { actions.onToggle(member.id) },
             onOpen = { actions.onShow(member.id) },
             contentDescription = stringResource(R.string.review_open_photo, member.fileName),
+            selectable = member.id != state.group.bestId,
             label = member.sharpness?.let { stringResource(R.string.review_sharpness, it.roundToInt()) },
             badge = when {
                 member.id == state.group.bestId -> { { CompactBadge(BadgeKind.BEST, stringResource(R.string.review_group_best)) } }
@@ -373,7 +372,7 @@ private fun GroupBottomBar(state: GroupUiState.Content, actions: GroupActions) {
         val hint = if (selected > 0) {
             stringResource(R.string.review_group_keep_rest_hint, state.group.members.size - selected)
         } else {
-            stringResource(R.string.review_group_keep_all_hint, state.group.members.size)
+            stringResource(R.string.review_group_keep_all_hint, state.pendingIds.size)
         }
         AdaptiveActionRow(hint = hint, showHintWhenNarrow = true) {
             if (selected > 0) {
@@ -385,7 +384,7 @@ private fun GroupBottomBar(state: GroupUiState.Content, actions: GroupActions) {
                 )
             } else {
                 TonalActionButton(
-                    text = if (state.busy) stringResource(R.string.review_working) else stringResource(R.string.review_group_keep_all),
+                    text = if (state.busy) stringResource(R.string.review_working) else stringResource(R.string.review_group_keep_all, state.pendingIds.size),
                     onClick = actions.onKeepAll,
                     enabled = !state.busy,
                 )

@@ -20,6 +20,23 @@ data class NormalizedView(
     val isZoomedIn: Boolean get() = userZoom > ZoomMath.ZOOMED_IN_THRESHOLD
 }
 
+/**
+ * 연사 비교에서 장 사이에 옮기는 확대 상태. 배율은 원본 픽셀 기준이라 해상도가 다른 장(크롭 모드·다른 카메라)도
+ * 같은 '100%'로 비교된다.
+ * - [originalZoom]: 원본 대비 배율(1 = 100%). 전체 보기면 null
+ * - [centerX]/[centerY]: 화면 가운데가 가리키는 사진 위치(0..1)
+ * - [aspect]: 그 장의 가로/세로 비. 비가 다른 장(세로 사진 등)에는 위치를 옮기지 않는다
+ */
+@Immutable
+data class SharedView(
+    val originalZoom: Float?,
+    val centerX: Float,
+    val centerY: Float,
+    val aspect: Float,
+) {
+    val isZoomedIn: Boolean get() = originalZoom != null
+}
+
 /** 확대 배율 계산(순수 함수, JVM 테스트 대상) */
 internal object ZoomMath {
     /** 이보다 크면 '확대된 상태'로 본다(전체 보기 대비) */
@@ -60,6 +77,38 @@ internal object ZoomMath {
         val ra = aW / aH
         val rb = bW / bH
         return abs(ra - rb) <= max(ra, rb) * SIZE_TOLERANCE
+    }
+
+    /**
+     * 지금 확대 상태(화면 맞춤 대비 [userZoom], 콘텐츠 기준 최종 배율 = userZoom × [fitScale])를
+     * 원본 대비 배율로. [originalFinalZoom] = 원본 100%의 최종 배율.
+     */
+    fun toOriginalZoom(userZoom: Float, fitScale: Float, originalFinalZoom: Float): Float =
+        if (originalFinalZoom > 0f) userZoom * fitScale / originalFinalZoom else userZoom
+
+    /**
+     * 다른 장의 비교 상태([shared])를 이 장에 맞춘다.
+     * - 전체 보기였으면 전체 보기
+     * - 원본 대비 같은 배율. 이 장이 작아 그 배율이 전체 보기보다 작으면 화면 맞춤의 2배
+     * - 가로/세로 비가 같으면 같은 위치, 다르면 이 장의 가장 선명한 위치([focusX]/[focusY])
+     */
+    fun transfer(
+        shared: SharedView,
+        targetAspect: Float,
+        focusX: Float,
+        focusY: Float,
+        fitScale: Float,
+        originalFinalZoom: Float,
+    ): NormalizedView {
+        val originalZoom = shared.originalZoom ?: return NormalizedView(1f, 0.5f, 0.5f)
+        val final = originalZoom * originalFinalZoom
+        val userZoom = if (fitScale <= 0f || final < fitScale * ZOOMED_IN_THRESHOLD) MIN_STEP_OF_FIT else final / fitScale
+        val keepPosition = sameAspect(shared.aspect, 1f, targetAspect, 1f)
+        return NormalizedView(
+            userZoom = userZoom,
+            centerX = if (keepPosition) shared.centerX else focusOrCenter(focusX),
+            centerY = if (keepPosition) shared.centerY else focusOrCenter(focusY),
+        )
     }
 
     /** 초점 위치(0..1). 없거나 범위를 벗어나면 가운데 */

@@ -79,6 +79,14 @@ class ReviewScreenshotTest {
         ReviewContent(readyState(ReviewTab.BURST), ReviewActions())
     }
 
+    @Test fun burstWhileAnalyzing() = compose.capture("review_burst_analyzing_phone") {
+        ReviewContent(readyState(ReviewTab.BURST).copy(analysis = AnalysisStatus(running = true, done = 120, total = 324)), ReviewActions())
+    }
+
+    @Test fun videoNothingSelected() = compose.capture("review_video_unselected_phone") {
+        ReviewContent(readyState(ReviewTab.VIDEO), ReviewActions())
+    }
+
     @Test fun video() = compose.capture("review_video_phone") {
         ReviewContent(readyState(ReviewTab.VIDEO, videoSelection = setOf(51, 52)), ReviewActions())
     }

@@ -11,12 +11,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.leepy0.photocull.data.review.MediaCard
+import com.leepy0.photocull.ui.theme.Spacing
 import com.leepy0.photocull.ui.theme.ViewerColors
 import kotlinx.coroutines.launch
 
 /**
  * 펼친 화면의 오른쪽 미리보기(목록 옆에 붙는 확대 뷰어). 고른 사진을 가장 선명한 위치 100%로 연다.
  * 화면 안에 들어가므로 시스템 인셋은 바깥 Scaffold가 처리한다.
+ * [onPrevious]/[onNext]를 주면 하단에 [‹ 이전] [다음 ›] 버튼을 둔다(null이면 그쪽 끝).
  */
 @Composable
 fun PhotoPreviewPane(
@@ -25,6 +27,8 @@ fun PhotoPreviewPane(
     total: Int?,
     modifier: Modifier = Modifier,
     startAtFocus: Boolean = true,
+    onPrevious: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
     bottomBar: @Composable (MediaCard) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -53,7 +57,18 @@ fun PhotoPreviewPane(
             )
         }
         ViewerBottomArea(applyInsets = false, modifier = Modifier.align(Alignment.BottomCenter)) {
-            bottomBar(card)
+            if (onPrevious != null || onNext != null) {
+                ViewerNavRow(
+                    canPrevious = onPrevious != null,
+                    canNext = onNext != null,
+                    onPrevious = { onPrevious?.invoke() },
+                    onNext = { onNext?.invoke() },
+                    // 미리보기 안의 하단 버튼은 48dp(주요 행동은 화면 하단)
+                    actionHeight = Spacing.touchTarget,
+                ) { bottomBar(card) }
+            } else {
+                bottomBar(card)
+            }
         }
     }
 }

@@ -54,12 +54,21 @@ fun UpdateSheetHost(visible: Boolean, onDismiss: () -> Unit) {
     }
     val justUpdatedNotes by notesFlow.collectAsStateWithLifecycle()
 
+    val impl = controller as? UpdateControllerImpl
     var canInstall by remember { mutableStateOf(controller.canInstallPackages()) }
-    // 설정에서 '설치 허용'을 켜고 돌아오면 바로 반영
+    // 앱이 보이는지 컨트롤러에 알린다: 돌아오면 미뤄 둔 설치 확인 화면·끊긴 받기를 잇고,
+    // 설정에서 '설치 허용'을 켜고 돌아왔으면 '권한 없음'을 걷어 바로 [설치]가 보이게 한다.
     LifecycleResumeEffect(controller) {
         canInstall = controller.canInstallPackages()
-        onPauseOrDispose { }
+        impl?.onAppResumed()
+        onPauseOrDispose { impl?.onAppPaused() }
     }
+
+    // 가져오는 중에는 [설치]를 끄고 안내, 끝나면 저절로 다시 켠다
+    val importController = LocalAppContainer.current.importController
+    val importState by importController.state.collectAsStateWithLifecycle()
+    val importing = remember(importState, importController) { UpdateControllerImpl.isImportBusy(importController) }
+    LaunchedEffect(importing) { if (!importing) impl?.refreshBlockedFailure() }
 
     var crashAt by remember { mutableStateOf<Long?>(null) }
     var crashPending by remember { mutableStateOf(false) }
@@ -83,7 +92,10 @@ fun UpdateSheetHost(visible: Boolean, onDismiss: () -> Unit) {
         if (!visible) return@LaunchedEffect
         canInstall = controller.canInstallPackages()
         when (controller.state.value) {
-            UpdateState.Idle, is UpdateState.UpToDate, is UpdateState.Failed -> controller.check(userInitiated = true)
+            // 새 버전을 이미 알고 있어도(받기/설치 대기) 더 새 핫픽스가 있을 수 있어 조용히 다시 확인한다
+            UpdateState.Idle, is UpdateState.UpToDate, is UpdateState.Failed,
+            is UpdateState.Available, is UpdateState.ReadyToInstall,
+            -> controller.check(userInitiated = true)
             else -> Unit
         }
     }
@@ -96,6 +108,7 @@ fun UpdateSheetHost(visible: Boolean, onDismiss: () -> Unit) {
             localBuild = controller.channel == CHANNEL_LOCAL,
             canCancelDownload = controller is CancellableUpdateDownload,
             failureAction = failureActionFor(context, state),
+            importRunning = importing,
         )
         justUpdated != null -> UpdateSheetMode.JustUpdated(
             versionName = controller.currentVersionName,

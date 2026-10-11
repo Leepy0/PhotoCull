@@ -21,13 +21,17 @@ data class SelectionRestore(val tab: ReviewTab, val ids: Set<Long>)
 sealed interface ReviewMessage {
     val undoable: Boolean get() = false
 
-    /** 휴지통으로 옮김(일부 실패 포함). [batch]로 실행 취소 */
+    /**
+     * 휴지통으로 옮김(일부 실패 포함). [batch]로 실행 취소.
+     * [regroupOnUndo]: 그룹을 다시 묶은 작업(모든 그룹 일괄 정리)이라 되돌린 뒤에도 다시 묶어야 한다.
+     */
     data class Trashed(
         val moved: Int,
         val failed: Int,
         val unit: CountUnit,
         val batch: TrashBatch,
         val restore: SelectionRestore? = null,
+        val regroupOnUndo: Boolean = false,
     ) : ReviewMessage {
         override val undoable: Boolean get() = batch.trashedIds.isNotEmpty() || batch.keptIds.isNotEmpty()
     }
@@ -48,23 +52,41 @@ sealed interface ReviewMessage {
     data object UndoFailed : ReviewMessage
 
     companion object {
-        /** 휴지통 결과를 메시지로. 하나도 못 옮겼으면 실패 */
-        fun fromTrash(result: TrashResult, requested: Int, unit: CountUnit, restore: SelectionRestore?): ReviewMessage {
-            val moved = if (result.movedCount == 0 && result.failedCount == 0) result.batch.trashedIds.size else result.movedCount
-            return if (moved == 0 && requested > 0) {
+        /**
+         * 휴지통 결과를 메시지로. 실제로 옮긴 수([TrashResult.movedCount])만 믿는다.
+         * 하나도 못 옮겼으면 실패(실행 취소 없음)로 알린다.
+         */
+        fun fromTrash(
+            result: TrashResult,
+            unit: CountUnit,
+            restore: SelectionRestore?,
+            regroupOnUndo: Boolean = false,
+        ): ReviewMessage =
+            if (result.movedCount <= 0) {
                 TrashFailed
             } else {
-                Trashed(moved = moved, failed = result.failedCount, unit = unit, batch = result.batch, restore = restore)
+                Trashed(
+                    moved = result.movedCount,
+                    failed = result.failedCount,
+                    unit = unit,
+                    batch = result.batch,
+                    restore = restore,
+                    regroupOnUndo = regroupOnUndo,
+                )
             }
-        }
     }
 }
 
-/** 모든 그룹에서 베스트만 남기기: 한 번의 휴지통 이동으로 처리해 실행 취소도 한 번에 */
+/**
+ * 모든 그룹에서 베스트만 남기기: 한 번의 휴지통 이동으로 처리해 실행 취소도 한 번에.
+ * 전체가 흐린 그룹([GroupCard.allBlurry])은 베스트도 흐리므로 '남기기'로 확정하지 않고 검토 대기로 둔다
+ * (그룹을 다시 묶으면 혼자 남은 베스트가 흐림 탭에 다시 나온다). [blurryGroupCount]는 그런 그룹 수.
+ */
 data class BurstPlan(
     val deleteIds: List<Long>,
     val keepIds: List<Long>,
     val deleteBytes: Long,
+    val blurryGroupCount: Int = 0,
 ) {
     val isEmpty: Boolean get() = deleteIds.isEmpty()
 
@@ -73,18 +95,20 @@ data class BurstPlan(
             val delete = LinkedHashSet<Long>()
             val keep = LinkedHashSet<Long>()
             var bytes = 0L
+            var blurry = 0
             for (g in groups) {
                 val selection = g.defaultSelection()
+                if (g.allBlurry) blurry++
                 for (m in g.members) {
                     if (m.id in selection) {
                         if (delete.add(m.id)) bytes += m.bytes
-                    } else if (m.reviewState == ReviewState.PENDING) {
+                    } else if (m.reviewState == ReviewState.PENDING && !g.allBlurry) {
                         keep.add(m.id)
                     }
                 }
             }
             keep.removeAll(delete)
-            return BurstPlan(delete.toList(), keep.toList(), bytes)
+            return BurstPlan(delete.toList(), keep.toList(), bytes, blurry)
         }
     }
 }
@@ -103,6 +127,8 @@ data class ReviewUiState(
     val videoSelection: Set<Long> = emptySet(),
     val analysis: AnalysisStatus = AnalysisStatus(),
     val busy: Boolean = false,
+    /** 이번에 이미 삭제·유지를 한 탭("남은 n장"이라고 부를 수 있는 탭) */
+    val processedTabs: Set<ReviewTab> = emptySet(),
 ) {
     val shortVideos: List<MediaCard> get() = videos.filter { ReviewRepository.isShortVideo(it, shortVideoMs) }
     val otherVideos: List<MediaCard> get() = videos.filterNot { ReviewRepository.isShortVideo(it, shortVideoMs) }
@@ -138,13 +164,16 @@ data class ReviewUiState(
         return items(tab).sumOf { if (it.id in sel) it.bytes else 0L }
     }
 
-    /** '남은 n장 모두 유지'의 대상 수 */
+    /** 'n장 모두 유지'의 대상 수 */
     fun remainingCount(tab: ReviewTab): Int = when (tab) {
         ReviewTab.BURST -> burstPendingCount
         else -> items(tab).size
     }
 
     fun unit(tab: ReviewTab): CountUnit = if (tab == ReviewTab.VIDEO) CountUnit.VIDEO else CountUnit.PHOTO
+
+    /** 탭 목록이 비어 있는지(빈 화면이 분석 진행을 대신 보여준다) */
+    fun isTabEmpty(tab: ReviewTab): Boolean = count(tab) == 0
 
     /** 항목이 남아 있는 다음 탭(현재 탭 다음부터 차례로). 없으면 null */
     fun nextTabWithItems(from: ReviewTab): ReviewTab? {

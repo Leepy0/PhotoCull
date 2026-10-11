@@ -83,6 +83,8 @@ sealed interface UpdateSheetMode {
         val canCancelDownload: Boolean = true,
         /** [UpdateState.Failed]일 때 주요 행동 */
         val failureAction: FailureAction = FailureAction.RETRY,
+        /** 사진을 가져오는 중(설치하면 앱이 다시 시작돼 끊긴다): [설치]를 끄고 안내, 끝나면 저절로 켜진다 */
+        val importRunning: Boolean = false,
     ) : UpdateSheetMode
 
     /** 업데이트 직후 첫 실행 */
@@ -176,10 +178,10 @@ private fun UpdateBody(mode: UpdateSheetMode.Update) {
                 subtitle = change(s.info),
             )
             IconLine(Icons.Outlined.CheckCircle, StatusKind.SUCCESS, stringResource(R.string.update_ready_verified))
-            if (mode.canInstall) {
-                BodyText(stringResource(R.string.update_ready_restart_note), muted = true)
-            } else {
-                PermissionCallout()
+            when {
+                !mode.canInstall -> PermissionCallout()
+                mode.importRunning -> IconLine(Icons.Outlined.Info, StatusKind.INFO, stringResource(R.string.update_ready_wait_import))
+                else -> BodyText(stringResource(R.string.update_ready_restart_note), muted = true)
             }
             if (mode.localBuild) LocalBuildNote()
         }
@@ -253,7 +255,7 @@ private fun SheetActions(mode: UpdateSheetMode, actions: UpdateSheetActions) {
                 ) { Text(stringResource(R.string.update_action_cancel_download)) }
                 is UpdateState.ReadyToInstall -> {
                     if (mode.canInstall) {
-                        PrimaryActionButton(stringResource(R.string.update_action_install), actions.onInstall)
+                        PrimaryActionButton(stringResource(R.string.update_action_install), actions.onInstall, enabled = !mode.importRunning)
                     } else {
                         PrimaryActionButton(stringResource(R.string.update_action_allow_install), actions.onOpenInstallSettings)
                     }
@@ -479,7 +481,8 @@ private fun DownloadProgress(info: UpdateInfo, progress: Float) {
                 )
             }
         }
-        BodyText(stringResource(R.string.update_downloading_background), muted = true)
+        // 앱을 백그라운드로 보내면 시스템이 프로세스를 얼려 받기가 끊길 수 있다(돌아오면 한 번 다시 받는다)
+        IconLine(Icons.Outlined.Info, StatusKind.INFO, stringResource(R.string.update_downloading_background))
     }
 }
 
