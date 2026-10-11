@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.BurstMode
@@ -24,13 +25,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.window.core.layout.WindowSizeClass
 import com.leepy0.photocull.R
@@ -41,7 +43,9 @@ import com.leepy0.photocull.ui.components.BottomActionBar
 import com.leepy0.photocull.ui.components.EmptyState
 import com.leepy0.photocull.ui.components.ErrorState
 import com.leepy0.photocull.ui.components.LoadingState
+import com.leepy0.photocull.ui.components.PrimaryActionButton
 import com.leepy0.photocull.ui.nav.ReviewTab
+import com.leepy0.photocull.ui.viewer.LocalViewerNavigation
 import com.leepy0.photocull.ui.viewer.PhotoViewer
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -64,37 +68,23 @@ data class ReviewActions(
 )
 
 /**
- * 검토(흐림·연사·영상). 주요 행동은 하단 하나: 선택이 있으면 "n장 삭제 · 용량 확보", 없으면 "남은 n장 모두 유지".
- * 휴지통 이동은 확인 없이 하고 스낵바 [실행 취소]로 되돌린다.
+ * 검토(흐림·연사·영상). 주요 행동은 세 탭 모두 하단 같은 자리 하나:
+ * 흐림·영상은 선택이 있으면 "n장 삭제 · 용량", 연사는 "베스트만 남기고 n장 삭제 · 용량",
+ * 지울 것이 없으면 'n장 모두 유지'(보조 버튼).
+ * 휴지통 이동은 확인 없이 하고 스낵바 [실행 취소]로 되돌린다(그룹 화면과 같은 결과 통로 [ReviewEvents]).
  */
 @Composable
 fun ReviewScreen(initialTab: ReviewTab, onOpenGroup: (Long) -> Unit, onOpenHome: () -> Unit) {
     val container = LocalAppContainer.current
-    val vm: ReviewViewModel = viewModel { ReviewViewModel(container, initialTab) }
-    // 같은 화면을 다른 탭으로 다시 열라는 요청(홈의 '연사 n그룹' 등)만 반영하고, 돌아올 때는 보던 탭 유지
-    var appliedInitialTab by rememberSaveable { mutableStateOf(initialTab) }
-    LaunchedEffect(initialTab) {
-        if (appliedInitialTab != initialTab) {
-            vm.selectTab(initialTab)
-            appliedInitialTab = initialTab
-        }
+    val events = rememberReviewEvents()
+    val vm: ReviewViewModel = viewModel { ReviewViewModel(container, initialTab, createSavedStateHandle(), events) }
+    // 홈·알림의 "연사 탭으로" 같은 요청: 이미 있는 화면의 탭만 바꾼다(선택·스크롤은 그대로)
+    LaunchedEffect(events, vm) {
+        events.tabRequest.filterNotNull().collect { events.consumeTabRequest()?.let(vm::selectTab) }
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    val events = rememberReviewEvents()
-
-    LaunchedEffect(vm) {
-        vm.messages.collect { message ->
-            // 새 결과가 오면 이전 스낵바는 닫고 바로 보여준다(실행 취소는 가장 최근 작업 기준)
-            snackbar.currentSnackbarData?.dismiss()
-            launch { snackbar.showReviewMessage(context, message, vm::undo) }
-        }
-    }
-    // 그룹 화면에서 정리하고 돌아온 결과(실행 취소 스낵바)
-    LaunchedEffect(events) {
-        events.pending.filterNotNull().collect { events.consume()?.let(vm::showExternal) }
-    }
+    ReviewMessagesEffect(events, snackbar, onUndo = vm::undo)
 
     ReviewContent(
         state = state,
@@ -129,6 +119,11 @@ fun ReviewContent(
     var viewerId by rememberSaveable { mutableStateOf<Long?>(null) }
     // 펼친 화면 흐림 탭의 오른쪽 미리보기
     var previewId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // 목록 스크롤은 1단/2단 배치·탭 전환과 무관하게 유지(폴드를 접고 펴도 보던 자리)
+    val blurGrid = rememberLazyGridState()
+    val burstGrid = rememberLazyGridState()
+    val videoGrid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         modifier = modifier,
@@ -136,7 +131,8 @@ fun ReviewContent(
             Column {
                 TopAppBar(title = { Text(stringResource(R.string.review_title)) })
                 ReviewTabs(state, actions.onSelectTab)
-                AnalysisBanner(state.analysis)
+                // 탭이 비어 있으면 빈 화면이 분석 진행을 보여주므로 여기서는 한 번만
+                if (state.phase == LoadPhase.READY && !state.isTabEmpty(state.tab)) AnalysisBanner(state.analysis)
             }
         },
         bottomBar = { ReviewBottomBar(state, actions) },
@@ -163,14 +159,17 @@ fun ReviewContent(
                             state = state,
                             twoPane = twoPane,
                             previewId = previewId,
+                            gridState = blurGrid,
                             actions = actions,
                             onOpen = { card -> if (twoPane) previewId = card.id else openOverlay(ReviewTab.BLUR, card) },
+                            onPreview = { card -> previewId = card.id },
                             empty = empty,
                         )
-                        ReviewTab.BURST -> BurstTab(state = state, actions = actions, empty = empty)
+                        ReviewTab.BURST -> BurstTab(state = state, actions = actions, gridState = burstGrid, empty = empty)
                         ReviewTab.VIDEO -> VideoTab(
                             state = state,
                             actions = actions,
+                            gridState = videoGrid,
                             onOpen = { card -> openOverlay(ReviewTab.VIDEO, card) },
                             empty = empty,
                         )
@@ -189,16 +188,30 @@ fun ReviewContent(
             items = items,
             initialIndex = items.indexOfFirst { it.id == openId }.coerceAtLeast(0),
             onDismiss = {
+                val lastId = viewerId
                 viewerTab = null
                 viewerId = null
+                // 펼치면 오른쪽 미리보기가, 접힌 화면에서는 목록이 마지막으로 본 사진에서 이어진다
+                if (tab == ReviewTab.BLUR && lastId != null) {
+                    previewId = lastId
+                    val index = state.blur.indexOfFirst { it.id == lastId }
+                    if (index >= 0 && blurGrid.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                        scope.launch { blurGrid.scrollToItem(index) }
+                    }
+                }
             },
             startAtFocus = tab == ReviewTab.BLUR,
             onPageChanged = { viewerId = it.id },
             bottomBar = { card ->
                 val marked = card.id in selection
+                val navigation = LocalViewerNavigation.current
                 MarkForDeletionToggle(
                     marked = marked,
-                    onToggle = { actions.onSetMarked(tab, card.id, !marked) },
+                    onToggle = {
+                        actions.onSetMarked(tab, card.id, !marked)
+                        // 표시했으면 바로 다음 항목으로(100%로 확대된 사진은 밀어서 넘기기 어렵다)
+                        if (!marked) navigation?.next()
+                    },
                 )
             },
         )
@@ -225,23 +238,59 @@ private fun tabLabel(tab: ReviewTab, count: Int?): String = when (tab) {
     ReviewTab.VIDEO -> if (count == null) stringResource(R.string.review_tab_video_plain) else stringResource(R.string.review_tab_video, count)
 }
 
+/** 하단 주요 행동(세 탭 같은 자리): 지울 것이 있으면 삭제(빨강), 없으면 'n장 모두 유지'(보조) */
 @Composable
 private fun ReviewBottomBar(state: ReviewUiState, actions: ReviewActions) {
     if (state.phase != LoadPhase.READY) return
     val tab = state.tab
-    val selected = state.selection(tab).size
+    val unit = state.unit(tab)
     val remaining = state.remainingCount(tab)
-    if (selected == 0 && remaining == 0) return
-    BottomActionBar {
-        ReviewPrimaryAction(
-            selectedCount = selected,
-            selectedBytes = state.selectedBytes(tab),
-            remainingCount = remaining,
-            unit = state.unit(tab),
-            busy = state.busy,
-            onDelete = { actions.onDelete(tab) },
-            onKeepRest = { actions.onKeepRest(tab) },
-        )
+    val busyText = stringResource(R.string.review_working)
+    val keep: @Composable () -> Unit = {
+        AdaptiveActionRow(hint = stringResource(R.string.review_hint_keep), showHintWhenNarrow = true) {
+            TonalActionButton(
+                text = if (state.busy) busyText else keepRestLabel(remaining, unit, afterProcessing = tab in state.processedTabs),
+                onClick = { actions.onKeepRest(tab) },
+                enabled = !state.busy,
+            )
+        }
+    }
+    val delete: @Composable (hint: String, label: String, onClick: () -> Unit) -> Unit = { hint, label, onClick ->
+        AdaptiveActionRow(hint = hint, showHintWhenNarrow = true) {
+            PrimaryActionButton(
+                text = if (state.busy) busyText else label,
+                onClick = onClick,
+                enabled = !state.busy,
+                destructive = true,
+            )
+        }
+    }
+    when (tab) {
+        ReviewTab.BURST -> {
+            val plan = state.burstPlan
+            when {
+                !plan.isEmpty -> BottomActionBar {
+                    delete(
+                        stringResource(R.string.review_burst_hint),
+                        stringResource(R.string.review_burst_best_only, plan.deleteIds.size, bytesText(plan.deleteBytes)),
+                        actions.onKeepBestAll,
+                    )
+                }
+                remaining > 0 -> BottomActionBar { keep() }
+            }
+        }
+        else -> {
+            val selected = state.selection(tab).size
+            when {
+                selected > 0 -> BottomActionBar {
+                    delete(
+                        stringResource(R.string.review_hint_delete),
+                        deleteLabel(selected, state.selectedBytes(tab), unit),
+                    ) { actions.onDelete(tab) }
+                }
+                remaining > 0 -> BottomActionBar { keep() }
+            }
+        }
     }
 }
 

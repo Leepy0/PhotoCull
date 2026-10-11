@@ -10,6 +10,7 @@ import com.leepy0.photocull.data.settings.AppSettings
 import com.leepy0.photocull.data.settings.BlurSensitivity
 import com.leepy0.photocull.trash.TrashBatch
 import com.leepy0.photocull.trash.TrashResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -156,8 +157,15 @@ class FakeReviewDataSource(
     val unkeepCalls = mutableListOf<List<Long>>()
     val undoCalls = mutableListOf<TrashBatch>()
     val pinCalls = mutableListOf<Pair<Long, Long>>()
+    var regroupCalls = 0
     var failTrash = false
     var failedPerCall = 0
+
+    /** false면 실행 취소가 목록을 바로 갱신하지 않는다(실제 DB처럼 늦게 오는 경우) */
+    var publishOnUndo = true
+
+    /** 정해 두면 휴지통 이동이 이것이 끝날 때까지 기다린다(작업 중 상태를 시험) */
+    var trashGate: CompletableDeferred<Unit>? = null
 
     override fun blurCandidates(): Flow<List<MediaCard>> = blurFlow
     override fun groups(): Flow<List<GroupCard>> = groupsFlow
@@ -181,6 +189,7 @@ class FakeReviewDataSource(
     }
 
     override suspend fun moveToTrash(ids: Collection<Long>, keepIds: Collection<Long>): TrashResult {
+        trashGate?.await()
         if (failTrash) error("disk full")
         trashCalls += ids.toList() to keepIds.toList()
         val failed = failedPerCall.coerceAtMost(ids.size)
@@ -192,7 +201,11 @@ class FakeReviewDataSource(
 
     override suspend fun undoTrash(batch: TrashBatch) {
         undoCalls += batch
-        restore((batch.trashedIds + batch.keptIds).toSet())
+        if (publishOnUndo) restore((batch.trashedIds + batch.keptIds).toSet()) else gone -= (batch.trashedIds + batch.keptIds).toSet()
+    }
+
+    override fun regroup() {
+        regroupCalls++
     }
 
     override suspend fun pinBest(groupId: Long, itemId: Long) {

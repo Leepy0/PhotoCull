@@ -71,6 +71,10 @@ class UpdateSheetScreenshotTest {
 
     @Test fun readyToInstall() = shot("update_sheet_ready") { update(UpdateState.ReadyToInstall(info)) }
 
+    @Test fun readyWhileImporting() = shot("update_sheet_ready_importing") {
+        update(UpdateState.ReadyToInstall(info)).copy(importRunning = true)
+    }
+
     @Test fun failed() = shot("update_sheet_failed") {
         update(
             UpdateState.Failed(

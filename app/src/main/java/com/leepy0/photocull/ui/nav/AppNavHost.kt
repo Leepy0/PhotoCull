@@ -1,5 +1,7 @@
 package com.leepy0.photocull.ui.nav
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
@@ -26,7 +28,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -45,10 +52,13 @@ import com.leepy0.photocull.ui.home.HomeScreen
 import com.leepy0.photocull.ui.importer.ImportScreen
 import com.leepy0.photocull.ui.onboarding.OnboardingScreen
 import com.leepy0.photocull.ui.review.GroupScreen
+import com.leepy0.photocull.ui.review.ReviewEvents
 import com.leepy0.photocull.ui.review.ReviewScreen
+import com.leepy0.photocull.ui.review.rememberReviewEvents
 import com.leepy0.photocull.ui.settings.SettingsScreen
 import com.leepy0.photocull.ui.trash.TrashScreen
 import com.leepy0.photocull.ui.update.UpdateSheetHost
+import com.leepy0.photocull.util.Permissions
 import kotlin.reflect.KClass
 
 private data class TopLevel(
@@ -69,6 +79,10 @@ private val topLevels = listOf(
 /**
  * 하단 탭 4개(홈·검토·휴지통·설정). 접힌 화면은 하단 내비게이션 바, 펼친 화면은 내비게이션 레일.
  * 가져오기·그룹·온보딩 같은 흐름 화면에서는 탭을 숨긴다.
+ * - 시작 화면은 언제나 홈. 필수 권한이 없으면([startOnboarding]) 처음 한 번 시작(온보딩) 화면을 그 위에 올린다.
+ * - 하단 탭을 오가도 각 탭의 상태(검토의 탭·선택·스크롤 포함)를 되살린다. 홈·알림이 특정 검토 탭을 열 때는
+ *   [ReviewEvents.requestTab]으로 이미 있는 검토 화면의 탭만 바꾼다.
+ * - 화면을 여는 동작은 화면이 완전히 보일 때만(빠르게 두 번 눌러 두 번 이동하지 않게).
  */
 @Composable
 fun AppNavHost(
@@ -80,12 +94,27 @@ fun AppNavHost(
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination
-    val counts by container.review.counts().collectAsStateWithLifecycle(initialValue = ReviewCounts())
+    val countsFlow = remember(container) { container.review.counts() }
+    val counts by countsFlow.collectAsStateWithLifecycle(initialValue = ReviewCounts())
     var showUpdate by rememberSaveable { mutableStateOf(false) }
+    val reviewEvents = rememberReviewEvents()
+    val activity = LocalActivity.current
 
-    LaunchedEffect(pendingDestination) {
-        when (pendingDestination) {
-            null -> return@LaunchedEffect
+    // 필수 권한이 없으면 홈 위에 시작 화면을 한 번 올린다(회전·재생성 때 다시 올리지 않음)
+    var onboardingPushed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(startOnboarding) {
+        if (startOnboarding && !onboardingPushed) {
+            onboardingPushed = true
+            navController.navigate(OnboardingRoute(firstRun = true)) { launchSingleTop = true }
+        }
+    }
+
+    val onOnboarding = current?.isRoute(OnboardingRoute::class) == true
+    LaunchedEffect(pendingDestination, onOnboarding) {
+        val destination = pendingDestination ?: return@LaunchedEffect
+        // 첫 실행 권한 안내 중이면 마칠 때까지 미룬다(업데이트 시트는 바로)
+        if (onOnboarding && destination != AppDestinations.UPDATE) return@LaunchedEffect
+        when (destination) {
             AppDestinations.IMPORT -> navController.navigate(ImportRoute) { launchSingleTop = true }
             AppDestinations.REVIEW -> navController.navigateTopLevel(ReviewRoute())
             AppDestinations.UPDATE -> showUpdate = true
@@ -118,54 +147,68 @@ fun AppNavHost(
             }
         },
     ) {
-        NavHost(navController = navController, startDestination = if (startOnboarding) OnboardingRoute else HomeRoute) {
+        NavHost(navController = navController, startDestination = HomeRoute) {
             composable<HomeRoute> {
+                val owner = LocalLifecycleOwner.current
                 HomeScreen(
-                    onOpenImport = { navController.navigate(ImportRoute) { launchSingleTop = true } },
-                    onOpenReview = { tab -> navController.navigateTopLevel(ReviewRoute(tab.name)) },
-                    onOpenTrash = { navController.navigateTopLevel(TrashRoute) },
+                    onOpenImport = dropUnlessResumed { navController.navigate(ImportRoute) { launchSingleTop = true } },
+                    onOpenReview = { tab ->
+                        whenResumed(owner) { navController.openReview(reviewEvents, tab) }
+                    },
+                    onOpenTrash = dropUnlessResumed { navController.navigateTopLevel(TrashRoute) },
                     onOpenUpdate = { showUpdate = true },
-                    onOpenOnboarding = { navController.navigate(OnboardingRoute) { launchSingleTop = true } },
+                    onOpenOnboarding = dropUnlessResumed { navController.navigate(OnboardingRoute()) { launchSingleTop = true } },
                 )
             }
             composable<ReviewRoute> { entry ->
+                val owner = LocalLifecycleOwner.current
                 val tab = runCatching { ReviewTab.valueOf(entry.toRoute<ReviewRoute>().tab) }.getOrDefault(ReviewTab.BLUR)
                 ReviewScreen(
                     initialTab = tab,
-                    onOpenGroup = { id -> navController.navigate(GroupRoute(id)) },
-                    onOpenHome = { navController.navigateTopLevel(HomeRoute) },
+                    onOpenGroup = { id ->
+                        whenResumed(owner) { navController.navigate(GroupRoute(id)) { launchSingleTop = true } }
+                    },
+                    onOpenHome = dropUnlessResumed { navController.navigateTopLevel(HomeRoute) },
                 )
             }
             composable<GroupRoute> { entry ->
-                GroupScreen(groupId = entry.toRoute<GroupRoute>().groupId, onBack = { navController.popBackStack() })
+                GroupScreen(
+                    groupId = entry.toRoute<GroupRoute>().groupId,
+                    // 뒤로 화살표를 두 번 눌러 검토 화면까지 닫히지 않게
+                    onBack = dropUnlessResumed { navController.popBackStack() },
+                    // 정리를 마치면 닫는다(그사이 다른 화면으로 갔으면 그대로 둔다)
+                    onDone = { navController.popIfOnTop(entry) },
+                )
             }
-            composable<TrashRoute> { TrashScreen() }
+            composable<TrashRoute> {
+                TrashScreen(onOpenReview = dropUnlessResumed { navController.navigateTopLevel(ReviewRoute()) })
+            }
             composable<SettingsRoute> {
                 SettingsScreen(
-                    onOpenOnboarding = { navController.navigate(OnboardingRoute) { launchSingleTop = true } },
+                    onOpenOnboarding = dropUnlessResumed { navController.navigate(OnboardingRoute()) { launchSingleTop = true } },
                     onOpenUpdate = { showUpdate = true },
                 )
             }
             composable<ImportRoute> {
                 ImportScreen(
-                    onBack = { if (!navController.popBackStack()) navController.navigateTopLevel(HomeRoute) },
-                    onOpenReview = {
+                    onBack = dropUnlessResumed { if (!navController.popBackStack()) navController.navigateTopLevel(HomeRoute) },
+                    onOpenReview = dropUnlessResumed {
+                        // 가져오기 화면은 기록에 남기지 않고, 검토 화면은 보던 상태가 있으면 되살린다
                         navController.navigate(ReviewRoute()) {
                             popUpTo(navController.graph.findStartDestination().id) { saveState = false }
                             launchSingleTop = true
+                            restoreState = true
                         }
                     },
                 )
             }
-            composable<OnboardingRoute> {
-                OnboardingScreen(
-                    onDone = {
-                        navController.navigate(HomeRoute) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                )
+            composable<OnboardingRoute> { entry ->
+                val firstRun = entry.toRoute<OnboardingRoute>().firstRun
+                // 첫 실행에서 권한 없이 뒤로 가면 쓸 수 없는 홈 대신 앱을 닫는다
+                BackHandler(enabled = firstRun) {
+                    if (Permissions.hasAllFilesAccess()) navController.popIfOnTop(entry) else activity?.finish()
+                }
+                OnboardingScreen(onDone = { navController.popIfOnTop(entry) })
             }
         }
     }
@@ -175,10 +218,27 @@ fun AppNavHost(
 
 private fun NavDestination.isRoute(routeClass: KClass<*>): Boolean = hierarchy.any { it.hasRoute(routeClass) }
 
+/** 하단 탭 이동: 각 탭의 상태(스크롤·선택 등)를 저장하고 되살린다 */
 private fun NavHostController.navigateTopLevel(route: Any) {
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
-        restoreState = route !is ReviewRoute
+        restoreState = true
     }
+}
+
+/** 특정 검토 탭 열기: 이미 있는 검토 화면(되살린 화면 포함)이 요청을 받아 탭만 바꾼다 */
+private fun NavHostController.openReview(events: ReviewEvents, tab: ReviewTab) {
+    events.requestTab(tab)
+    navigateTopLevel(ReviewRoute(tab.name))
+}
+
+/** [entry]가 맨 위일 때만 닫는다(두 번 불려도 그 아래 화면까지 닫지 않게) */
+private fun NavHostController.popIfOnTop(entry: NavBackStackEntry) {
+    if (currentBackStackEntry?.id == entry.id) popBackStack()
+}
+
+/** 화면이 완전히 보일 때만 실행([dropUnlessResumed]의 인자 있는 판) */
+private inline fun whenResumed(owner: LifecycleOwner, block: () -> Unit) {
+    if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) block()
 }

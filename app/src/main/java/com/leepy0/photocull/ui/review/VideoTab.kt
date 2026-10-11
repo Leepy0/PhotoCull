@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +38,7 @@ internal fun VideoTab(
     onOpen: (MediaCard) -> Unit,
     empty: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     if (state.videos.isEmpty()) {
         Box(modifier.fillMaxSize()) { empty() }
@@ -46,6 +49,7 @@ internal fun VideoTab(
     val shortLimit = stringResource(R.string.review_video_seconds, (state.shortVideoMs / MS_PER_SECOND).toInt())
     LazyVerticalGrid(
         columns = GridCells.Adaptive(Spacing.gridCellMin),
+        state = gridState,
         contentPadding = PaddingValues(start = Spacing.m, end = Spacing.m, bottom = Spacing.m),
         horizontalArrangement = Arrangement.spacedBy(Spacing.gridGap),
         verticalArrangement = Arrangement.spacedBy(Spacing.gridGap),

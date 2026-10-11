@@ -3,6 +3,7 @@ package com.leepy0.photocull.update
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -15,6 +16,7 @@ import com.leepy0.photocull.util.Permissions
 object UpdateNotifications {
     private const val PREFS = "update_notify"
     private const val KEY_NOTIFIED_CODE = "notified_code"
+    private const val REQUEST_CONFIRM = 0x5543
 
     /** "PhotoCull v0.2.0 업데이트" → 탭하면 업데이트 시트. 이미 알린 버전이면 false */
     fun notifyAvailable(context: Context, info: UpdateInfo): Boolean {
@@ -47,6 +49,33 @@ object UpdateNotifications {
             .setContentText(context.getString(R.string.update_notif_updated_text))
             .setContentIntent(openIntent(context, AppDestinations.HOME))
             .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setAutoCancel(true)
+        post(context, builder)
+    }
+
+    /**
+     * 앱이 가려진 사이 시스템이 설치 확인을 요구했다: 탭하면 시스템 확인 화면이 열린다
+     * (알림 탭은 사용자 동작이라 백그라운드 액티비티 시작 제한에 걸리지 않는다).
+     */
+    fun notifyConfirmInstall(context: Context, confirm: Intent, versionName: String?) {
+        val open = PendingIntent.getActivity(
+            context,
+            REQUEST_CONFIRM,
+            Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val text = if (versionName != null) {
+            context.getString(R.string.update_notif_confirm_text_version, versionName)
+        } else {
+            context.getString(R.string.update_notif_confirm_text)
+        }
+        val builder = NotificationCompat.Builder(context, NotificationChannels.UPDATE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.update_notif_confirm_title))
+            .setContentText(text)
+            .setContentIntent(open)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
         post(context, builder)
     }

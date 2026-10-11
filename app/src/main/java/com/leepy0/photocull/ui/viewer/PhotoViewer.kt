@@ -10,13 +10,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +43,7 @@ import com.leepy0.photocull.data.db.MediaType
 import com.leepy0.photocull.data.review.MediaCard
 import com.leepy0.photocull.ui.theme.Spacing
 import com.leepy0.photocull.ui.theme.ViewerColors
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -48,7 +52,9 @@ import kotlinx.coroutines.launch
  * - [startAtFocus]면 처음에 가장 선명한 위치(focusX/focusY)를 100%로 확대해 연다
  * - 영상은 앱 안에서 재생하고 [다른 앱으로 열기]를 둔다
  * - [items]가 바뀌어도(삭제·복원) 보고 있던 항목을 유지한다. 지금 항목이 사라지면 같은 자리의 다음 항목을 보여준다
- * [bottomBar]는 현재 보이는 항목을 받아 하단 행동(삭제 표시, 복원 등)을 그린다.
+ * - 하단에 [‹ 이전] [다음 ›] 버튼(48dp): 100%로 확대된 사진은 좌우로 밀면 사진 안에서 움직이므로 버튼으로 넘긴다
+ * [bottomBar]는 현재 보이는 항목을 받아 하단 행동(삭제 표시, 복원 등)을 그린다. 그 안에서
+ * [LocalViewerNavigation]으로 다음 항목으로 넘길 수 있다(예: 삭제 대상으로 표시한 뒤 다음 사진).
  * [fullScreenWindow]가 true면 별도 창으로 띄워 하단 탭·상태 표시줄까지 덮는다(뒤로 가기로 닫힘).
  */
 @Composable
@@ -102,6 +108,32 @@ private fun FullScreenDialogWindow() {
     }
 }
 
+/** 뷰어의 이전/다음 넘기기. 하단 바([PhotoViewer]의 bottomBar) 안에서 [LocalViewerNavigation]으로 쓴다. */
+@Stable
+class ViewerNavigation internal constructor(
+    private val pager: PagerState,
+    private val scope: CoroutineScope,
+) {
+    /** 넘기는 중이면 넘어갈 쪽 기준(빠르게 두 번 눌러도 두 장 넘어간다) */
+    private val basePage: Int get() = if (pager.isScrollInProgress) pager.targetPage else pager.currentPage
+
+    val canGoPrevious: Boolean get() = basePage > 0
+    val canGoNext: Boolean get() = basePage < pager.pageCount - 1
+
+    fun previous() {
+        val target = basePage - 1
+        if (target >= 0) scope.launch { pager.animateScrollToPage(target) }
+    }
+
+    fun next() {
+        val target = basePage + 1
+        if (target < pager.pageCount) scope.launch { pager.animateScrollToPage(target) }
+    }
+}
+
+/** 뷰어 하단 바 안에서만 값이 있다 */
+val LocalViewerNavigation = compositionLocalOf<ViewerNavigation?> { null }
+
 /** 페이지마다 만든 확대·재생 상태를 하단·상단 바에서 쓰기 위한 모음 */
 @Stable
 internal class ViewerPageControllers {
@@ -153,6 +185,7 @@ internal fun PhotoViewerContent(
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     val controllers = remember { ViewerPageControllers() }
     val scope = rememberCoroutineScope()
+    val navigation = remember(pagerState, scope) { ViewerNavigation(pagerState, scope) }
     val context = LocalContext.current
 
     Box(modifier.fillMaxSize().background(ViewerColors.background)) {
@@ -227,7 +260,18 @@ internal fun PhotoViewerContent(
                 if (current.type == MediaType.VIDEO) {
                     controllers.videos[current.id]?.let { VideoControls(it, fallbackDurationMs = current.durationMs) }
                 }
-                bottomBar(current)
+                CompositionLocalProvider(LocalViewerNavigation provides navigation) {
+                    if (items.size > 1) {
+                        ViewerNavRow(
+                            canPrevious = navigation.canGoPrevious,
+                            canNext = navigation.canGoNext,
+                            onPrevious = navigation::previous,
+                            onNext = navigation::next,
+                        ) { bottomBar(current) }
+                    } else {
+                        bottomBar(current)
+                    }
+                }
             }
         }
     }

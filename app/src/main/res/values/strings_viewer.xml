@@ -9,6 +9,9 @@
     <string name="viewer_zoom_original_desc" formatted="false">원본 크기(100%)로 확대해 보기</string>
     <string name="viewer_image_error_title">사진을 열 수 없습니다</string>
     <string name="viewer_image_error_body">파일이 옮겨졌거나 삭제되었습니다</string>
+    <string name="viewer_image_corrupt_body">파일이 손상되었거나 열 수 없는 형식입니다</string>
+    <string name="viewer_previous">이전</string>
+    <string name="viewer_next">다음</string>
 
     <!-- 영상 -->
     <string name="viewer_play">재생</string>

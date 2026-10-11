@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.ZoomOutMap
@@ -33,6 +35,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +51,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import com.leepy0.photocull.R
 import com.leepy0.photocull.data.db.MediaType
 import com.leepy0.photocull.data.review.MediaCard
@@ -195,6 +199,67 @@ internal fun ViewerBottomArea(
         }
     }
 }
+
+/**
+ * 하단 줄: [‹ 이전] · 호출 측 행동 · [다음 ›]. 확대한 사진은 좌우로 밀어도 사진 안에서만 움직이므로
+ * 넘기기를 버튼으로도 둔다(48dp, 이름을 읽어 준다). 끝에 닿으면 버튼은 흐려지고 자리는 그대로 둔다.
+ */
+@Composable
+internal fun ViewerNavRow(
+    canPrevious: Boolean,
+    canNext: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 호출 측 맨 아래 버튼의 높이: 화살표를 그 버튼과 같은 줄 가운데에 맞춘다(위에 안내 글이 있어도) */
+    actionHeight: Dp = Spacing.primaryButtonHeight,
+    content: @Composable () -> Unit,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Box(Modifier.heightIn(min = actionHeight), contentAlignment = Alignment.Center) {
+            ViewerNavButton(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                label = stringResource(R.string.viewer_previous),
+                enabled = canPrevious,
+                onClick = onPrevious,
+            )
+        }
+        Box(Modifier.weight(1f)) { content() }
+        Box(Modifier.heightIn(min = actionHeight), contentAlignment = Alignment.Center) {
+            ViewerNavButton(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                label = stringResource(R.string.viewer_next),
+                enabled = canNext,
+                onClick = onNext,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ViewerNavButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    OutlinedIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        border = BorderStroke(
+            ButtonDefaults.outlinedButtonBorder(enabled).width,
+            if (enabled) ViewerColors.onScrimMuted else ViewerColors.onScrimMuted.copy(alpha = DISABLED_ALPHA),
+        ),
+        colors = IconButtonDefaults.outlinedIconButtonColors(
+            contentColor = ViewerColors.onScrim,
+            disabledContentColor = ViewerColors.onScrimMuted.copy(alpha = DISABLED_ALPHA),
+        ),
+        modifier = Modifier.size(Spacing.touchTarget),
+    ) {
+        Icon(icon, contentDescription = label)
+    }
+}
+
+private const val DISABLED_ALPHA = 0.38f
 
 /** [전체 보기 ↔ 100%] 토글. 지금 할 수 있는 동작을 글자로 보여준다. */
 @Composable

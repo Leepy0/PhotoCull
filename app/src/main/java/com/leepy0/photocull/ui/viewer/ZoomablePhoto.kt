@@ -2,6 +2,7 @@
 
 package com.leepy0.photocull.ui.viewer
 
+import android.graphics.BitmapFactory
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Box
@@ -83,9 +84,11 @@ class PhotoZoomState internal constructor(
     var card: MediaCard by mutableStateOf(card)
         internal set
 
-    /** 파일이 없음(옮겨졌거나 삭제됨). 기다려도 준비되지 않는다 */
-    var isMissing: Boolean by mutableStateOf(false)
+    /** 열 수 없음(파일 없음·손상). 기다려도 준비되지 않는다. null = 정상(또는 아직 모름) */
+    var failure: PhotoLoadFailure? by mutableStateOf(null)
         internal set
+
+    val hasFailed: Boolean get() = failure != null
 
     /** 스크린샷·미리보기(실제 디코딩 없음)에서 그린 확대 상태 */
     internal var previewMode: Boolean = false
@@ -151,6 +154,36 @@ class PhotoZoomState internal constructor(
         val original = ZoomMath.originalFinalZoom(card.originalMaxPx(), max(size.width, size.height))
         val target = ZoomMath.originalTargetFinalZoom(original, fit)
         return NormalizedView(userZoom = target / fit, centerX = centerX, centerY = centerY)
+    }
+
+    /** 같은 위치 비교용: 지금 상태를 원본 픽셀 기준으로. 준비 전이면 null */
+    fun sharedView(): SharedView? {
+        val size = contentSize ?: return null
+        val view = currentView() ?: return null
+        val original = ZoomMath.originalFinalZoom(card.originalMaxPx(), max(size.width, size.height))
+        return SharedView(
+            originalZoom = if (view.isZoomedIn) ZoomMath.toOriginalZoom(view.userZoom, fitScale, original) else null,
+            centerX = view.centerX,
+            centerY = view.centerY,
+            aspect = size.width / size.height,
+        )
+    }
+
+    /** 다른 장의 비교 상태를 이 장에 맞춘 확대 상태 */
+    fun viewFor(shared: SharedView): NormalizedView? {
+        val size = contentSize ?: return if (previewMode) {
+            if (shared.isZoomedIn) NormalizedView(INSPECTION_ZOOM, shared.centerX, shared.centerY) else NormalizedView(1f, 0.5f, 0.5f)
+        } else {
+            null
+        }
+        return ZoomMath.transfer(
+            shared = shared,
+            targetAspect = size.width / size.height,
+            focusX = ZoomMath.focusOrCenter(card.focusX),
+            focusY = ZoomMath.focusOrCenter(card.focusY),
+            fitScale = fitScale,
+            originalFinalZoom = ZoomMath.originalFinalZoom(card.originalMaxPx(), max(size.width, size.height)),
+        )
     }
 
     /** 가장 선명한 위치를 100%로 */
@@ -302,16 +335,33 @@ fun ZoomablePhoto(
         state.retainViewAcrossContentChanges(appliedSize, appliedView)
     }
 
+    val useDirectFile = remember(card.path, card.mimeType) { card.isJpeg() }
     LaunchedEffect(card.path) {
-        state.isMissing = withContext(Dispatchers.IO) { runCatching { !File(card.path).isFile }.getOrDefault(true) }
+        state.failure = withContext(Dispatchers.IO) { probePhotoFile(card.path, checkHeader = useDirectFile) }
+        // 머리는 멀쩡해도 디코딩이 끝내 안 되면(손상된 파일·열 수 없는 형식) 계속 돌지 않고 안내한다
+        if (state.failure == null && !state.isDisplayed) {
+            delay(DISPLAY_TIMEOUT_MS)
+            if (!state.isDisplayed) state.failure = PhotoLoadFailure.UNREADABLE
+        }
     }
-    if (state.isMissing) {
-        ViewerMessage(
-            title = stringResource(R.string.viewer_image_error_title),
-            body = stringResource(R.string.viewer_image_error_body),
-            modifier = modifier,
-        )
-        return
+    when (state.failure) {
+        PhotoLoadFailure.MISSING -> {
+            ViewerMessage(
+                title = stringResource(R.string.viewer_image_error_title),
+                body = stringResource(R.string.viewer_image_error_body),
+                modifier = modifier,
+            )
+            return
+        }
+        PhotoLoadFailure.UNREADABLE -> {
+            ViewerMessage(
+                title = stringResource(R.string.viewer_image_error_title),
+                body = stringResource(R.string.viewer_image_corrupt_body),
+                modifier = modifier,
+            )
+            return
+        }
+        null -> Unit
     }
     // 고해상도 타일이 늦으면(큰 사진 첫 디코딩) 잠시 뒤 진행 표시
     var slow by remember(card.path) { mutableStateOf(false) }
@@ -325,7 +375,6 @@ fun ZoomablePhoto(
     }
 
     val context = LocalContext.current
-    val useDirectFile = remember(card.path, card.mimeType) { card.isJpeg() }
     val coilModel = remember(card.path, crossfade) {
         ImageRequest.Builder(context).data(File(card.path)).crossfade(crossfade).build()
     }
@@ -363,6 +412,33 @@ fun ZoomablePhoto(
             )
         }
     }
+}
+
+/** 사진을 열 수 없는 이유 */
+enum class PhotoLoadFailure {
+    /** 파일이 없음(옮겨졌거나 삭제됨) */
+    MISSING,
+
+    /** 파일은 있으나 손상됐거나 열 수 없는 형식 */
+    UNREADABLE,
+}
+
+/**
+ * 열기 전 확인(IO 스레드). 파일이 없으면 [PhotoLoadFailure.MISSING].
+ * [checkHeader]면 머리만 읽어 크기를 알 수 없는 파일(손상)을 [PhotoLoadFailure.UNREADABLE]로 본다.
+ */
+internal fun probePhotoFile(path: String, checkHeader: Boolean): PhotoLoadFailure? {
+    val file = File(path)
+    val exists = runCatching { file.isFile }.getOrDefault(false)
+    if (!exists) return PhotoLoadFailure.MISSING
+    if (!checkHeader) return null
+    val bounds = runCatching {
+        BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+            BitmapFactory.decodeFile(path, this)
+        }
+    }.getOrNull()
+    return if (bounds == null || bounds.outWidth <= 0 || bounds.outHeight <= 0) PhotoLoadFailure.UNREADABLE else null
 }
 
 /** JPEG 원본 파일을 미리보기 없이 바로 영역 디코딩. 콘텐츠 크기가 처음부터 원본이라 확대 위치가 흔들리지 않는다. */
@@ -408,3 +484,6 @@ private fun InspectionPhoto(card: MediaCard, view: NormalizedView?, modifier: Mo
 
 private const val INSPECTION_ZOOM = 3f
 private const val SLOW_LOAD_MS = 600L
+
+/** 이 시간이 지나도 아무것도 그리지 못하면 열 수 없는 사진으로 본다 */
+private const val DISPLAY_TIMEOUT_MS = 15_000L

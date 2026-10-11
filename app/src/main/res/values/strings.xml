@@ -11,6 +11,10 @@
     <string name="action_open_settings">설정 열기</string>
     <string name="state_loading">불러오는 중</string>
 
+    <!-- 선택 가능한 썸네일 -->
+    <string name="thumb_open">크게 보기</string>
+    <string name="thumb_mark">삭제 대상</string>
+
     <!-- 하단 탭 -->
     <string name="nav_home">홈</string>
     <string name="nav_review">검토</string>
