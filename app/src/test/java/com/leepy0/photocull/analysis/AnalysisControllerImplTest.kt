@@ -33,6 +33,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowMediaMetadataRetriever
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.time.ZonedDateTime
 import java.time.ZoneId
 import kotlin.random.Random
@@ -306,5 +307,153 @@ class AnalysisControllerImplTest {
         idle()
         assertThat(db.groupDao().all()).isEmpty()
         assertThat(db.mediaDao().get(s.a)!!.groupId).isNull()
+    }
+
+    // ---- 그룹 재계산: 바뀐 행만 쓰기, 계산 중 고정한 베스트 유지 ----
+
+    /** media_item.groupId를 SET한 행을 기록하는 트리거(쓰기 범위 확인용) */
+    private fun installGroupIdWriteLog() {
+        val sql = db.openHelper.writableDatabase
+        sql.execSQL("CREATE TABLE IF NOT EXISTS test_groupid_log(itemId INTEGER NOT NULL)")
+        sql.execSQL(
+            "CREATE TRIGGER IF NOT EXISTS test_log_groupid AFTER UPDATE OF groupId ON media_item " +
+                "BEGIN INSERT INTO test_groupid_log VALUES (NEW.id); END",
+        )
+        sql.execSQL("DELETE FROM test_groupid_log")
+    }
+
+    private fun groupIdWrites(): Set<Long> =
+        db.openHelper.readableDatabase.query("SELECT DISTINCT itemId FROM test_groupid_log").use { c ->
+            buildSet { while (c.moveToNext()) add(c.getLong(0)) }
+        }
+
+    @Test
+    fun regroup_writesOnlyRowsWhoseGroupChanged() = runBlocking {
+        val s = seed()
+        controller.kick()
+        idle()
+        val g = db.groupDao().all().single()
+
+        installGroupIdWriteLog()
+        // 새 사진이 그룹에 합류: 그 사진만 groupId가 바뀐다. 이미 그룹에 있던 A·B는 다시 쓰지 않는다
+        // (전부 지우고 다시 쓰면 그룹에 든 모든 행이 바뀌어 쓰기 잠금이 길고 모든 목록이 다시 조회된다)
+        val late = insert("IMG_0009.JPG", writeJpeg("IMG_0009.JPG", sceneGray()), capturedAt = t0 + 900)
+        controller.kick()
+        idle()
+
+        assertThat(db.mediaDao().get(late)!!.groupId).isEqualTo(g.id)
+        assertThat(db.groupDao().all().single().count).isEqualTo(3)
+        assertThat(groupIdWrites()).containsNoneOf(s.a, s.b, s.c)
+
+        // 아무것도 바뀌지 않으면 쓰지 않는다
+        db.openHelper.writableDatabase.execSQL("DELETE FROM test_groupid_log")
+        controller.regroup()
+        idle()
+        assertThat(groupIdWrites()).isEmpty()
+    }
+
+    @Test
+    fun regroup_keepsBestPinnedWhileItWasComputing() = runBlocking {
+        val s = seed()
+        controller.kick()
+        idle()
+        val g = db.groupDao().all().single()
+        assertThat(g.bestItemId).isEqualTo(s.a)
+
+        // 새 사진 합류로 그룹 계산(트랜잭션 밖)이 끝난 직후, 쓰기 전에 사용자가 흐린 B를 베스트로 고정
+        controller.beforeRegroupWrite = {
+            controller.beforeRegroupWrite = null
+            assertThat(db.groupDao().pinBest(g.id, s.b)).isEqualTo(1)
+        }
+        val late = insert("IMG_0009.JPG", writeJpeg("IMG_0009.JPG", sceneGray()), capturedAt = t0 + 900)
+        controller.kick()
+        idle()
+
+        assertThat(controller.beforeRegroupWrite).isNull() // 위 시나리오가 실제로 일어났다
+        val after = db.groupDao().all().single()
+        assertThat(after.id).isEqualTo(g.id)
+        assertThat(after.count).isEqualTo(3)
+        assertThat(after.bestItemId).isEqualTo(s.b) // 고정이 계산 결과에 덮이지 않는다
+        assertThat(after.bestPinned).isTrue()
+        assertThat(db.mediaDao().get(late)!!.groupId).isEqualTo(g.id)
+    }
+
+    @Test
+    fun pinBest_ignoresItemOutsideTheGroup() = runBlocking {
+        val s = seed()
+        controller.kick()
+        idle()
+        val g = db.groupDao().all().single()
+        // C는 그룹 멤버가 아니다(다시 묶여 빠진 경우와 같음)
+        assertThat(db.groupDao().pinBest(g.id, s.c)).isEqualTo(0)
+        val after = db.groupDao().all().single()
+        assertThat(after.bestItemId).isEqualTo(s.a)
+        assertThat(after.bestPinned).isFalse()
+    }
+
+    // ---- 진행 상태 ----
+
+    @Test
+    fun progress_keepsCountingAcrossShortPauses() = runBlocking {
+        insert("IMG_0101.JPG", writeJpeg("IMG_0101.JPG", sceneGray()), capturedAt = t0)
+        controller.kick()
+        idle()
+        assertThat(controller.status.value).isEqualTo(AnalysisStatus(running = false, done = 1, total = 1))
+
+        // 가져오는 중 큰 영상을 복사하느라 잠깐 쉬었다가 다음 사진: 0부터 다시 세지 않는다
+        insert("IMG_0102.JPG", writeJpeg("IMG_0102.JPG", sceneGray()), capturedAt = t0 + 60_000)
+        controller.kick()
+        idle()
+        assertThat(controller.status.value).isEqualTo(AnalysisStatus(running = false, done = 2, total = 2))
+    }
+
+    @Test
+    fun progress_restartsAfterLongIdle() = runBlocking {
+        val fresh = AnalysisControllerImpl(context, scope, db, settings, lingerMs = 0, progressResetIdleMs = 0)
+        insert("IMG_0101.JPG", writeJpeg("IMG_0101.JPG", sceneGray()), capturedAt = t0)
+        fresh.kick()
+        withTimeout(60_000) { fresh.awaitIdle(); fresh.status.first { !it.running } }
+        insert("IMG_0102.JPG", writeJpeg("IMG_0102.JPG", sceneGray()), capturedAt = t0 + 60_000)
+        fresh.kick()
+        withTimeout(60_000) { fresh.awaitIdle(); fresh.status.first { !it.running } }
+        assertThat(fresh.status.value).isEqualTo(AnalysisStatus(running = false, done = 1, total = 1))
+    }
+
+    // ---- 멈춘 파일 ----
+
+    /** 이름에 HANG이 들어간 영상은 네이티브 호출이 멈춘 것처럼 스레드를 붙잡는다(취소로 풀리지 않음) */
+    private class HangingVideoAnalyzer(private val release: CountDownLatch) : VideoAnalyzer() {
+        override suspend fun analyze(path: String, currentCapturedAt: Long): VideoAnalysis {
+            if ("HANG" in path) release.await()
+            return super.analyze(path, currentCapturedAt)
+        }
+    }
+
+    @Test
+    fun hungItem_timesOutAndWorkerContinues() = runBlocking {
+        val release = CountDownLatch(1)
+        try {
+            val fresh = AnalysisControllerImpl(
+                context, scope, db, settings,
+                videoAnalyzer = HangingVideoAnalyzer(release),
+                lingerMs = 0,
+                itemTimeoutMs = 500,
+            )
+            val hung = insert("MVI_HANG.MP4", File(dir, "MVI_HANG.MP4").apply { writeBytes(ByteArray(64)) }, capturedAt = t0, type = MediaType.VIDEO)
+            val fv = File(dir, "MVI_0010.MP4").apply { writeBytes(ByteArray(64)) }
+            ShadowMediaMetadataRetriever.addMetadata(fv.path, MediaMetadataRetriever.METADATA_KEY_DURATION, "4000")
+            val ok = insert("MVI_0010.MP4", fv, capturedAt = t0 + 10_000, type = MediaType.VIDEO)
+
+            fresh.kick()
+            withTimeout(30_000) { fresh.awaitIdle(); fresh.status.first { !it.running } }
+
+            val h = db.mediaDao().get(hung)!!
+            assertThat(h.analysisFailed).isTrue()
+            assertThat(h.durationMs).isNull()
+            assertThat(db.mediaDao().get(ok)!!.durationMs).isEqualTo(4_000)
+            assertThat(fresh.status.value.done).isEqualTo(2)
+        } finally {
+            release.countDown()
+        }
     }
 }
