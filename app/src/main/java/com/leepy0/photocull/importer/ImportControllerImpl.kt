@@ -149,7 +149,15 @@ class ImportControllerImpl(
     }
 
     /** 서비스가 포그라운드로 시작하지 못함(시스템 제한 등): 시작 대기 중이던 화면을 오류로 */
-    internal fun onServiceStartFailed() {
+    internal fun onServiceStartFailed() = abandonPendingStart()
+
+    /**
+     * 서비스가 멈춤(또는 이 시작 요청을 맡지 않기로 함). 그때 가져오기가 돌고 있지 않은데 화면이 Running이면
+     * 아무도 끝내 주지 않으므로 오류로 바꾼다(취소·초기화·스캔이 영영 막히지 않게).
+     */
+    internal fun onServiceStopped() = abandonPendingStart()
+
+    private fun abandonPendingStart() {
         if (!importing.get() && _state.value is ImportState.Running) {
             _state.value = ImportState.Failed(ImportError.Unexpected("service"))
         }
@@ -259,7 +267,9 @@ class ImportControllerImpl(
 
     private suspend fun recover() {
         val s = settings.current()
-        ImportRecovery(ledger, env.destinationFiles).run(StoragePaths.destRoot(s.destFolderName, env.storageRoot))
+        val report = ImportRecovery(ledger, env.destinationFiles).run(StoragePaths.destRoot(s.destFolderName, env.storageRoot))
+        // 되살린 사진은 다음 가져오기·앱 시작까지 기다리지 않고 바로 분석
+        if (report.recoveredItems > 0 || report.restoredPartFiles > 0) runCatching { analysis.kick() }
     }
 
     private fun initialProgress(summary: CardScanSummary) = ImportProgress(

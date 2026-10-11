@@ -35,7 +35,8 @@ fun randomBytes(seed: Int, size: Int): ByteArray = Random(seed).nextBytes(size)
  * - [present]=false → 분리된 카드(읽기·삭제 실패, isPresent=false)
  * - [removeWhileReading] 파일을 [removeAfterBytes]만큼 읽으면 분리
  * - [failDeletes] 이름의 파일은 삭제 실패(쓰기 금지)
- * - [onRead] 읽기 진행 훅(취소 테스트)
+ * - [onRead] 읽기 진행 훅(취소 테스트), [beforeDelete] 원본 삭제 직전 훅
+ * - [deleteCalls] 삭제 시도 수
  */
 class TestCard(val root: File) : CardSource {
     @Volatile var present = true
@@ -44,6 +45,8 @@ class TestCard(val root: File) : CardSource {
     var removeAfterBytes = 0L
     val failDeletes = HashSet<String>()
     var onRead: ((CardFile, Long) -> Unit)? = null
+    var beforeDelete: ((CardFile) -> Unit)? = null
+    @Volatile var deleteCalls = 0
 
     /** 넣은 대상 파일의 원래 해시(relPath → sha256). 안전 불변식 확인용 */
     val originals = LinkedHashMap<String, String>()
@@ -96,6 +99,8 @@ class TestCard(val root: File) : CardSource {
     }
 
     override fun delete(file: CardFile): Boolean {
+        deleteCalls++
+        beforeDelete?.invoke(file)
         if (!present || file.name in failDeletes) return false
         return fs.delete(file)
     }
@@ -133,6 +138,27 @@ class CorruptingFiles(private val corrupt: (String, Int) -> Boolean) : Destinati
 
     override fun openForRead(file: File): InputStream = DestinationFiles.Default.openForRead(file)
     override fun moveNoReplace(from: File, to: File): Boolean = DestinationFiles.Default.moveNoReplace(from, to)
+    override fun syncRenamed(file: File) = DestinationFiles.Default.syncRenamed(file)
+}
+
+/** 실제 파일 위에서 이름 변경·fsync 호출을 기록하는 폰 저장소. [failSync] 이름은 fsync가 실패한다. */
+open class RecordingFiles : DestinationFiles {
+    /** 호출 순서: "move:<이름>", "sync:<이름>" */
+    val events = ArrayList<String>()
+    val failSync = HashSet<String>()
+    var onSync: ((File) -> Unit)? = null
+
+    override fun openForWrite(file: File): DestinationOutput = DestinationFiles.Default.openForWrite(file)
+    override fun openForRead(file: File): InputStream = DestinationFiles.Default.openForRead(file)
+    override fun moveNoReplace(from: File, to: File): Boolean =
+        DestinationFiles.Default.moveNoReplace(from, to).also { if (it) events += "move:${to.name}" }
+
+    override fun syncRenamed(file: File) {
+        events += "sync:${file.name}"
+        onSync?.invoke(file)
+        if (file.name in failSync) throw IOException("fsync failed")
+        DestinationFiles.Default.syncRenamed(file)
+    }
 }
 
 /** 엔진 테스트 공통: 카드·폰 임시 폴더, 인메모리 Room, 기록용 미디어 스캔/분석 신호 */
@@ -146,13 +172,17 @@ class EngineHarness(tmp: File) {
     var kicks = 0
     val volume = CardVolume("3A1B-27F0", "EOS_DIGITAL", card.root.path, null, CardAccess.DIRECT)
 
-    fun engine(io: DestinationFiles = DestinationFiles.Default) = ImportEngine(
+    fun engine(
+        io: DestinationFiles = DestinationFiles.Default,
+        ledger: ImportLedger = this.ledger,
+        removalGraceMs: Long = 0,
+    ) = ImportEngine(
         ledger = ledger,
         io = io,
         mediaScanner = MediaScanSink { paths, _ -> scanned += paths },
         onMediaVerified = { kicks++ },
         freeSpace = { Long.MAX_VALUE },
-        removalGraceMs = 0,
+        removalGraceMs = removalGraceMs,
     )
 
     fun plan(): ScanPlan = runBlocking {
@@ -165,9 +195,11 @@ class EngineHarness(tmp: File) {
         cancel: CancelSignal = CancelSignal(),
         io: DestinationFiles = DestinationFiles.Default,
         progress: MutableList<ImportProgress>? = null,
+        ledger: ImportLedger = this.ledger,
+        removalGraceMs: Long = 0,
     ): EngineOutcome = runBlocking {
         val request = ImportRequest(plan(), move, "R10", monthly, phone)
-        engine(io).run(request, card, cancel) { progress?.add(it) }
+        engine(io, ledger, removalGraceMs).run(request, card, cancel) { progress?.add(it) }
     }
 
     fun items(): List<MediaItemEntity> = runBlocking {

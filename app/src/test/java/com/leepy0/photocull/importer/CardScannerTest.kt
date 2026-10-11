@@ -36,7 +36,7 @@ class CardScannerTest {
         assertThat(byKey.getValue("DCIM/100CANON/IMG_0002").primary.kind).isEqualTo(CardFileKind.HEIF)
         assertThat(byKey.getValue("DCIM/100CANON/IMG_0003").primary.kind).isEqualTo(CardFileKind.CR3)
         assertThat(byKey.getValue("DCIM/100CANON/img_0004").files).hasSize(2)
-        assertThat(byKey.getValue("DCIM/100CANON/MVI_0005").isVideo).isTrue()
+        assertThat(byKey.getValue("DCIM/100CANON/MVI_0005.MP4").isVideo).isTrue()
         assertThat(plan.units).hasSize(6)
 
         val s = plan.summary
@@ -54,6 +54,17 @@ class CardScannerTest {
             emptyList(), 0, "DCIM/R10",
         )
         assertThat(plan.units.map { it.keyPath }).containsExactly("DCIM/100CANON/IMG_0001", "DCIM/100CANON/IMG_0001.MP4")
+    }
+
+    @Test fun videosWithSameBaseNameGetDistinctUnitKeys() {
+        // A.MP4와 A.MOV가 같은 단위 키면 둘 다 대표로 나오고 남기기/삭제가 둘에 함께 적용된다
+        val plan = CardScanner.plan(
+            volume,
+            listOf(f("DCIM/100CANON/MVI_0001.MP4"), f("DCIM/100CANON/MVI_0001.MOV")),
+            emptyList(), 0, "DCIM/R10",
+        )
+        assertThat(plan.units.map { it.keyPath }).containsExactly("DCIM/100CANON/MVI_0001.MOV", "DCIM/100CANON/MVI_0001.MP4")
+        assertThat(plan.units.all { it.isVideo && it.files.size == 1 }).isTrue()
     }
 
     @Test fun ledgerMatchingNeedsSamePathSizeAndTime() {

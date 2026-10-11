@@ -28,8 +28,8 @@
     <string name="imp_result_cancelled_moved">가져오기 취소됨 · %1$s개 이동</string>
     <string name="imp_result_cancelled_copied">가져오기 취소됨 · %1$s개 복사</string>
     <string name="imp_result_nothing_new">새로 가져온 파일이 없습니다</string>
-    <string name="imp_result_review">흐림 %1$s장 · 연사 %2$s그룹</string>
-    <string name="imp_result_review_clean">흐린 사진과 연사가 없습니다</string>
+    <string name="imp_result_review">검토할 사진: 흐림 %1$s장 · 연사 %2$s그룹</string>
+    <string name="imp_result_review_clean">검토할 흐린 사진과 연사가 없습니다</string>
     <string name="imp_result_skipped">이미 가져온 %1$s개를 건너뛰었습니다</string>
     <string name="imp_result_failed">실패 %1$s개 · 눌러서 확인하세요</string>
     <string name="imp_result_delete_failed">카드에서 못 지움 %1$s개 · 쓰기 금지 스위치를 확인하세요</string>
