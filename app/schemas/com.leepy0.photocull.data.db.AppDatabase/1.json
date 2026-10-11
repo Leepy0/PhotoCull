@@ -1,0 +1,423 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "cdabac6d996a9c17a19c4471165b23a0",
+    "entities": [
+      {
+        "tableName": "import_session",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `volumeId` TEXT NOT NULL, `volumeLabel` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `finishedAt` INTEGER, `moveMode` INTEGER NOT NULL, `state` TEXT NOT NULL, `totalFiles` INTEGER NOT NULL, `totalBytes` INTEGER NOT NULL, `successCount` INTEGER NOT NULL, `duplicateCount` INTEGER NOT NULL, `failedCount` INTEGER NOT NULL, `sourceDeleteFailedCount` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volumeId",
+            "columnName": "volumeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volumeLabel",
+            "columnName": "volumeLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "moveMode",
+            "columnName": "moveMode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalFiles",
+            "columnName": "totalFiles",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalBytes",
+            "columnName": "totalBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "successCount",
+            "columnName": "successCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duplicateCount",
+            "columnName": "duplicateCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failedCount",
+            "columnName": "failedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceDeleteFailedCount",
+            "columnName": "sourceDeleteFailedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "media_item",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `volumeId` TEXT NOT NULL, `srcRelPath` TEXT NOT NULL, `srcLocation` TEXT NOT NULL, `srcSize` INTEGER NOT NULL, `srcLastModified` INTEGER NOT NULL, `unitKey` TEXT NOT NULL, `isPrimary` INTEGER NOT NULL, `type` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `dstPath` TEXT, `fileName` TEXT NOT NULL, `sha256` TEXT, `importStatus` TEXT NOT NULL, `importError` TEXT, `capturedAt` INTEGER NOT NULL, `width` INTEGER, `height` INTEGER, `iso` INTEGER, `exposure` TEXT, `aperture` TEXT, `focalLength` TEXT, `sharpness` REAL, `focusX` REAL, `focusY` REAL, `dhash` INTEGER, `analysisFailed` INTEGER NOT NULL, `durationMs` INTEGER, `groupId` INTEGER, `reviewState` TEXT NOT NULL, `trashedAt` INTEGER, `trashPath` TEXT, `updatedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volumeId",
+            "columnName": "volumeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "srcRelPath",
+            "columnName": "srcRelPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "srcLocation",
+            "columnName": "srcLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "srcSize",
+            "columnName": "srcSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "srcLastModified",
+            "columnName": "srcLastModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitKey",
+            "columnName": "unitKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isPrimary",
+            "columnName": "isPrimary",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mimeType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dstPath",
+            "columnName": "dstPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256",
+            "columnName": "sha256",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "importStatus",
+            "columnName": "importStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importError",
+            "columnName": "importError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "iso",
+            "columnName": "iso",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "exposure",
+            "columnName": "exposure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "aperture",
+            "columnName": "aperture",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "focalLength",
+            "columnName": "focalLength",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sharpness",
+            "columnName": "sharpness",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "focusX",
+            "columnName": "focusX",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "focusY",
+            "columnName": "focusY",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "dhash",
+            "columnName": "dhash",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "analysisFailed",
+            "columnName": "analysisFailed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "reviewState",
+            "columnName": "reviewState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trashedAt",
+            "columnName": "trashedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "trashPath",
+            "columnName": "trashPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_media_item_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_media_item_unitKey",
+            "unique": false,
+            "columnNames": [
+              "unitKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_unitKey` ON `${TABLE_NAME}` (`unitKey`)"
+          },
+          {
+            "name": "index_media_item_groupId",
+            "unique": false,
+            "columnNames": [
+              "groupId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_groupId` ON `${TABLE_NAME}` (`groupId`)"
+          },
+          {
+            "name": "index_media_item_reviewState",
+            "unique": false,
+            "columnNames": [
+              "reviewState"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_reviewState` ON `${TABLE_NAME}` (`reviewState`)"
+          },
+          {
+            "name": "index_media_item_volumeId_srcRelPath",
+            "unique": false,
+            "columnNames": [
+              "volumeId",
+              "srcRelPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_volumeId_srcRelPath` ON `${TABLE_NAME}` (`volumeId`, `srcRelPath`)"
+          },
+          {
+            "name": "index_media_item_dstPath",
+            "unique": false,
+            "columnNames": [
+              "dstPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_item_dstPath` ON `${TABLE_NAME}` (`dstPath`)"
+          }
+        ]
+      },
+      {
+        "tableName": "media_group",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `bestItemId` INTEGER NOT NULL, `bestPinned` INTEGER NOT NULL, `count` INTEGER NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bestItemId",
+            "columnName": "bestItemId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bestPinned",
+            "columnName": "bestPinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "count",
+            "columnName": "count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startAt",
+            "columnName": "startAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endAt",
+            "columnName": "endAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_media_group_bestItemId",
+            "unique": false,
+            "columnNames": [
+              "bestItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_group_bestItemId` ON `${TABLE_NAME}` (`bestItemId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cdabac6d996a9c17a19c4471165b23a0')"
+    ]
+  }
+}
