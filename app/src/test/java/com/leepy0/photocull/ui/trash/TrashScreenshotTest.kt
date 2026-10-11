@@ -79,7 +79,7 @@ class TrashScreenshotTest {
     @Test fun confirmEmptyTrashDark() = captureScreen("trash_confirm_empty_phone_dark", dark = true) {
         val all = TrashFakeData.items
         TrashContent(
-            TrashFakeData.ready(confirm = DeleteConfirm(null, all.size, all.sumOf { it.bytes }, hasRaw = true)),
+            TrashFakeData.ready(confirm = DeleteConfirm(all.map { it.id }, all.size, all.sumOf { it.bytes }, hasRaw = true)),
             TrashActions(),
         )
     }

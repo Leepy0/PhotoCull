@@ -2,6 +2,7 @@ package com.leepy0.photocull.ui.trash
 
 import com.google.common.truth.Truth.assertThat
 import com.leepy0.photocull.data.review.MediaCard
+import com.leepy0.photocull.trash.RestoreReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,11 +28,11 @@ class TrashViewModelTest {
         val items = MutableStateFlow(TrashFakeData.items)
         val retention = MutableStateFlow(30)
         var failLoads = false
-        var restoreResult: ((Collection<Long>) -> Int)? = null
+        var restoreResult: ((Collection<Long>) -> RestoreReport)? = null
         var restoreError: Exception? = null
         val restored = ArrayList<List<Long>>()
         val deleted = ArrayList<List<Long>>()
-        var emptied = 0
+        var purges = 0
 
         override fun trashed(): Flow<List<MediaCard>> =
             if (failLoads) flow { throw IllegalStateException("db closed") } else items
@@ -39,12 +40,12 @@ class TrashViewModelTest {
         override fun retentionDays(): Flow<Int> = retention
         override val workScope: CoroutineScope = scope
 
-        override suspend fun restore(ids: Collection<Long>): Int {
+        override suspend fun restore(ids: Collection<Long>): RestoreReport {
             restoreError?.let { throw it }
             restored += ids.toList()
-            val n = restoreResult?.invoke(ids) ?: ids.size
+            val report = restoreResult?.invoke(ids) ?: RestoreReport(ids.size)
             items.value = items.value.filterNot { it.id in ids.toSet() }
-            return n
+            return report
         }
 
         override suspend fun deleteForever(ids: Collection<Long>): Int {
@@ -53,11 +54,9 @@ class TrashViewModelTest {
             return ids.size
         }
 
-        override suspend fun emptyTrash(): Int {
-            emptied++
-            val n = items.value.size
-            items.value = emptyList()
-            return n
+        override suspend fun purgeExpired(): Int {
+            purges++
+            return 0
         }
 
         override fun now(): Long = TRASH_NOW
@@ -123,11 +122,11 @@ class TrashViewModelTest {
         val source = FakeSource(workScope())
         val (vm, messages) = start(source)
 
-        source.restoreResult = { ids -> ids.size - 1 }
+        source.restoreResult = { ids -> RestoreReport(ids.size - 1, failed = 1) }
         vm.toggle(1)
         vm.toggle(2)
         vm.restoreSelected()
-        source.restoreResult = { 0 }
+        source.restoreResult = { RestoreReport(0, failed = 1) }
         vm.restoreOne(3)
         source.restoreError = IllegalStateException("io")
         vm.restoreOne(4)
@@ -167,20 +166,64 @@ class TrashViewModelTest {
         assertThat(vm.state.value.selection).isEmpty()
     }
 
-    @Test fun emptyTrashAfterConfirmation() = runTest(dispatcher) {
+    @Test fun emptyTrashDeletesOnlyWhatTheDialogShowed() = runTest(dispatcher) {
         val source = FakeSource(workScope())
         val (vm, messages) = start(source)
 
         vm.askEmptyTrash()
         val confirm = vm.state.value.confirm!!
-        assertThat(confirm.ids).isNull()
+        assertThat(confirm.ids).containsExactlyElementsIn(TrashFakeData.items.map { it.id })
         assertThat(confirm.count).isEqualTo(TrashFakeData.items.size)
         assertThat(confirm.hasRaw).isTrue()
 
+        // 대화상자를 보는 사이 진행 중이던 일괄 삭제가 휴지통에 더 넣었다
+        val late = trashedPhoto(99, daysAgo = 0)
+        source.items.value = listOf(late) + source.items.value
+
         vm.confirmDelete()
-        assertThat(source.emptied).isEqualTo(1)
-        assertThat(vm.state.value.isEmpty).isTrue()
-        assertThat(messages.single()).isInstanceOf(TrashMessage.Deleted::class.java)
+        assertThat(source.deleted).containsExactly(TrashFakeData.items.map { it.id })
+        assertThat(vm.state.value.items.map { it.id }).containsExactly(99L) // 확인하지 않은 것은 남는다
+        assertThat(messages.single()).isEqualTo(
+            TrashMessage.Deleted(count = TrashFakeData.items.size, failed = 0, bytes = TrashFakeData.items.sumOf { it.bytes }),
+        )
+    }
+
+    @Test fun restoreOfAlreadyGoneFilesSaysSo() = runTest(dispatcher) {
+        val source = FakeSource(workScope())
+        val (vm, messages) = start(source)
+
+        source.restoreResult = { RestoreReport(restored = 1, gone = 1) }
+        vm.toggle(1)
+        vm.toggle(2)
+        vm.restoreSelected()
+        source.restoreResult = { RestoreReport(restored = 0, gone = 1) }
+        vm.restoreOne(3)
+
+        assertThat(messages).containsExactly(
+            TrashMessage.Restored(count = 1, failed = 0, gone = 1),
+            TrashMessage.Restored(count = 0, failed = 0, gone = 1),
+        ).inOrder()
+        assertThat(vm.state.value.selection).isEmpty()
+    }
+
+    @Test fun openingScreenPurgesExpired() = runTest(dispatcher) {
+        val source = FakeSource(workScope())
+        start(source)
+        assertThat(source.purges).isEqualTo(1)
+    }
+
+    @Test fun daysLeftRoundsUpAndSaysSoonInLastDay() {
+        val days = 30
+        val deadline = TRASH_NOW - days * DAY_MS
+        // 막 지운 것: 30일
+        assertThat(TrashRetention.daysLeft(TRASH_NOW - 60_000, days, TRASH_NOW)).isEqualTo(30)
+        // 1일 4시간 남음 → 2일
+        assertThat(TrashRetention.daysLeft(deadline + DAY_MS + 4 * 3_600_000, days, TRASH_NOW)).isEqualTo(2)
+        // 한 시간 남음 → "곧 영구 삭제"(0), "1일 남음"이 아니다
+        assertThat(TrashRetention.daysLeft(deadline + 3_600_000, days, TRASH_NOW)).isEqualTo(0)
+        // 이미 지남(정리 전) → 0
+        assertThat(TrashRetention.daysLeft(deadline - DAY_MS, days, TRASH_NOW)).isEqualTo(0)
+        assertThat(TrashRetention.daysLeft(deadline, 0, TRASH_NOW)).isNull()
     }
 
     @Test fun loadErrorThenRetry() = runTest(dispatcher) {

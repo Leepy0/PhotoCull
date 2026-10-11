@@ -1,5 +1,6 @@
 package com.leepy0.photocull.ui.importer
 
+import androidx.lifecycle.SavedStateHandle
 import com.google.common.truth.Truth.assertThat
 import com.leepy0.photocull.importer.ImportError
 import com.leepy0.photocull.importer.ImportState
@@ -130,6 +131,43 @@ class ImportViewModelTest {
         source.cardFlow.value = card
         // 다시 연결되면 자동으로 남은 파일을 확인한다
         assertThat(source.scans).isEqualTo(1)
+    }
+
+    @Test fun moveModeChoice_survivesProcessDeath() = runTest(dispatcher) {
+        val source = FakeImportFlowSource(card = card, import = ImportState.Ready(ImportFakes.summary()))
+        val saved = SavedStateHandle()
+        val vm = ImportViewModel(source, saved)
+        backgroundScope.launch { vm.state.collect {} }
+        vm.setMoveMode(false) // 기본은 '옮긴 뒤 삭제', 이번에는 '카드에 남기기'
+
+        // 프로세스가 정리된 뒤 저장된 상태로 다시 만든다
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        val vm2 = ImportViewModel(source, restored)
+        backgroundScope.launch { vm2.state.collect {} }
+        assertThat(vm2.state.value.moveMode).isFalse()
+        vm2.start()
+        assertThat(source.starts).containsExactly(false)
+    }
+
+    @Test fun destSettingsChangeWhileReady_rescans() = runTest(dispatcher) {
+        val source = FakeImportFlowSource(card = card, import = ImportState.Ready(ImportFakes.summary()))
+        val vm = ImportViewModel(source)
+        backgroundScope.launch { vm.state.collect {} }
+        assertThat(source.scans).isEqualTo(0)
+
+        source.settingsFlow.value = source.settingsFlow.value.copy(destFolderName = "여행")
+        assertThat(source.scans).isEqualTo(1)
+
+        // 확인 중에 바뀌면 요약이 나온 뒤 한 번 더
+        source.settingsFlow.value = source.settingsFlow.value.copy(monthlySubfolders = !source.settingsFlow.value.monthlySubfolders)
+        assertThat(source.scans).isEqualTo(1)
+        source.importFlow.value = ImportState.Ready(ImportFakes.summary())
+        assertThat(source.scans).isEqualTo(2)
+
+        // 저장 위치와 상관없는 설정은 다시 확인하지 않는다
+        source.importFlow.value = ImportState.Ready(ImportFakes.summary())
+        source.settingsFlow.value = source.settingsFlow.value.copy(cardNotification = !source.settingsFlow.value.cardNotification)
+        assertThat(source.scans).isEqualTo(2)
     }
 
     @Test fun reviewCounts_reachState() = runTest(dispatcher) {

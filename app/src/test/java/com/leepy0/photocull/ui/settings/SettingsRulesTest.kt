@@ -1,9 +1,7 @@
 package com.leepy0.photocull.ui.settings
 
 import com.google.common.truth.Truth.assertThat
-import com.leepy0.photocull.data.db.MediaType
-import com.leepy0.photocull.data.db.ReviewState
-import com.leepy0.photocull.data.review.MediaCard
+import com.leepy0.photocull.trash.PurgePreview
 import org.junit.Test
 
 class SettingsRulesTest {
@@ -38,21 +36,14 @@ class SettingsRulesTest {
         assertThat(RetentionRules.isShortening(current = 30, next = 0)).isFalse()
     }
 
-    @Test fun retentionExpiringMatchesPurgeCutoff() {
-        val now = 100L * DAY
-        val items = listOf(card(1, now - 8 * DAY), card(2, now - 7 * DAY + 1), card(3, now - 20 * DAY), card(4, null))
-        assertThat(RetentionRules.expiring(items, 7, now).map { it.id }).containsExactly(1L, 3L)
-        assertThat(RetentionRules.expiring(items, 0, now)).isEmpty()
-    }
-
-    private fun card(id: Long, trashedAt: Long?) = MediaCard(
-        id = id, path = "/x/$id.JPG", fileName = "$id.JPG", type = MediaType.PHOTO, mimeType = "image/jpeg",
-        capturedAt = 0, bytes = 1, hasRaw = false, width = null, height = null, sharpness = null, focusX = null,
-        focusY = null, durationMs = null, reviewState = ReviewState.TRASHED, groupId = null, trashedAt = trashedAt,
-        iso = null, exposure = null, aperture = null, focalLength = null,
-    )
-
-    private companion object {
-        const val DAY = 86_400_000L
+    @Test fun retentionDecisionUsesPurgeCountAndNeverSavesBlindly() {
+        // 바로 지워질 것이 없으면 확인 없이 저장
+        assertThat(RetentionRules.decide(7, Result.success(PurgePreview(0, 0)))).isEqualTo(RetentionRules.Decision.Save)
+        // 있으면 실제 정리와 같은 기준으로 센 수·용량으로 확인
+        assertThat(RetentionRules.decide(7, Result.success(PurgePreview(3, 900))))
+            .isEqualTo(RetentionRules.Decision.Confirm(RetentionConfirm(days = 7, count = 3, bytes = 900)))
+        // 세지 못했으면(조회 실패·알 수 없음) 바꾸지 않는다 — 확인 없이 영구 삭제되는 일이 없게
+        assertThat(RetentionRules.decide(7, Result.failure(IllegalStateException("db")))).isEqualTo(RetentionRules.Decision.Fail)
+        assertThat(RetentionRules.decide(7, Result.success(null))).isEqualTo(RetentionRules.Decision.Fail)
     }
 }
