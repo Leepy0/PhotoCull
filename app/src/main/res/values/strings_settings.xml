@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 설정 화면 -->
+    <string name="settings_title">설정</string>
+
+    <!-- 구역 -->
+    <string name="settings_section_import">가져오기</string>
+    <string name="settings_section_review">검토</string>
+    <string name="settings_section_trash">휴지통</string>
+    <string name="settings_section_display">화면</string>
+    <string name="settings_section_permissions">권한</string>
+    <string name="settings_section_about">앱 정보</string>
+
+    <!-- 가져오기 -->
+    <string name="settings_dest_folder">저장 폴더</string>
+    <string name="settings_monthly">월별 하위 폴더</string>
+    <string name="settings_monthly_desc">예: %1$s</string>
+    <string name="settings_card_source">카드 원본</string>
+    <string name="settings_card_source_move">옮긴 뒤 삭제</string>
+    <string name="settings_card_source_copy">카드에 남기기</string>
+    <string name="settings_card_source_move_desc">폰에 복사하고 확인이 끝난 파일만 카드에서 지웁니다</string>
+    <string name="settings_card_source_copy_desc">카드 원본을 그대로 둡니다. 카드를 백업으로 남길 때 고르세요</string>
+    <string name="settings_card_notification">카드 연결 알림</string>
+    <string name="settings_card_notification_desc">카드를 연결하면 알림으로 알려줍니다</string>
+
+    <!-- 저장 폴더 대화상자 -->
+    <string name="settings_folder_dialog_title">저장 폴더</string>
+    <string name="settings_folder_field">DCIM 아래 폴더 이름</string>
+    <string name="settings_folder_preview">저장 위치: %1$s</string>
+    <string name="settings_folder_replaced">사용할 수 없는 문자는 _로 바꿔 저장합니다</string>
+    <string name="settings_folder_blank">폴더 이름을 입력하세요</string>
+    <string name="settings_folder_too_long">%1$d자 이하로 입력하세요</string>
+    <string name="settings_folder_invalid">점(.)만으로는 폴더를 만들 수 없습니다</string>
+    <string name="settings_folder_note">이미 가져온 사진은 그대로 두고, 다음 가져오기부터 적용됩니다</string>
+    <string name="settings_folder_save">저장</string>
+
+    <!-- 검토 -->
+    <string name="settings_blur">흐림 민감도</string>
+    <string name="settings_blur_low">낮음</string>
+    <string name="settings_blur_normal">보통</string>
+    <string name="settings_blur_high">높음</string>
+    <string name="settings_blur_low_desc">아주 흐린 사진만 찾습니다</string>
+    <string name="settings_blur_normal_desc">흔들리거나 초점이 나간 사진을 찾습니다</string>
+    <string name="settings_blur_high_desc">조금 덜 선명한 사진까지 찾습니다. 선명한 사진이 섞일 수 있습니다</string>
+    <string name="settings_burst_gap">연사 간격</string>
+    <string name="settings_burst_gap_desc">%1$s 안에 이어 찍은 사진을 연사 한 그룹으로 묶습니다</string>
+    <string name="settings_seconds">%1$s초</string>
+    <string name="settings_short_video">짧은 영상 기준</string>
+    <string name="settings_short_video_desc">%1$s 이하 영상을 실수 촬영 후보로 보여줍니다</string>
+
+    <!-- 휴지통 -->
+    <string name="settings_retention">보관 기간</string>
+    <string name="settings_retention_days">%1$d일</string>
+    <string name="settings_retention_forever">무기한</string>
+    <string name="settings_retention_days_desc">삭제한 사진은 %1$d일이 지나면 자동으로 영구 삭제합니다</string>
+    <string name="settings_retention_forever_desc">휴지통을 직접 비울 때까지 보관합니다</string>
+    <string name="settings_retention_confirm_title">보관 기간을 %1$d일로 줄일까요?</string>
+    <string name="settings_retention_confirm_body">%1$d일보다 오래된 %2$d개(%3$s)가 바로 영구 삭제됩니다. 되돌릴 수 없습니다.</string>
+    <string name="settings_retention_confirm_action">%1$d일로 변경</string>
+
+    <!-- 화면 -->
+    <string name="settings_theme">테마</string>
+    <string name="settings_theme_system">시스템</string>
+    <string name="settings_theme_light">라이트</string>
+    <string name="settings_theme_dark">다크</string>
+    <string name="settings_theme_system_desc">폰의 다크 모드 설정을 따릅니다</string>
+    <string name="settings_theme_light_desc">항상 밝은 화면으로 보여줍니다</string>
+    <string name="settings_theme_dark_desc">항상 어두운 화면으로 보여줍니다</string>
+
+    <!-- 권한 -->
+    <string name="settings_perm_all_files">모든 파일 접근</string>
+    <string name="settings_perm_all_files_desc">카드 사진을 읽고 DCIM에 저장할 때 필요합니다(필수)</string>
+    <string name="settings_perm_notifications">알림</string>
+    <string name="settings_perm_notifications_desc">카드 연결과 가져오기 진행을 알려줍니다</string>
+    <string name="settings_perm_install">앱 설치(업데이트용)</string>
+    <string name="settings_perm_install_desc">앱 안에서 새 버전을 설치할 때 필요합니다</string>
+    <string name="settings_perm_granted">허용됨</string>
+    <string name="settings_perm_needed">필요</string>
+    <string name="settings_perm_open">%1$s 설정 열기</string>
+    <string name="settings_onboarding">권한 안내 다시 보기</string>
+    <string name="settings_onboarding_desc">처음 실행할 때 본 안내 화면을 엽니다</string>
+
+    <!-- 앱 정보 -->
+    <string name="settings_version">버전</string>
+    <string name="settings_auto_update">자동 업데이트 확인</string>
+    <string name="settings_auto_update_desc">하루 한 번 새 버전을 확인하고 알려줍니다</string>
+    <string name="settings_check_update">업데이트 확인</string>
+    <string name="settings_update_idle">새 버전이 있는지 확인합니다</string>
+    <string name="settings_update_last_checked">마지막 확인: %1$s</string>
+    <string name="settings_update_checking">확인 중</string>
+    <string name="settings_update_up_to_date">최신 버전입니다</string>
+    <string name="settings_update_available">새 버전이 있습니다 · v%1$s</string>
+    <string name="settings_update_downloading">v%1$s 받는 중</string>
+    <string name="settings_update_downloading_percent">v%1$s 받는 중 · %2$d%%</string>
+    <string name="settings_update_ready">v%1$s 설치 준비가 끝났습니다</string>
+    <string name="settings_update_installing">v%1$s 설치 중</string>
+    <string name="settings_update_failed">확인하지 못했습니다. 눌러서 다시 시도하세요</string>
+    <string name="settings_releases">릴리스 페이지</string>
+    <string name="settings_releases_desc">버전별 변경 내용을 브라우저로 봅니다</string>
+    <string name="settings_crash_none">오류 보고서</string>
+    <string name="settings_crash_none_desc">기록된 비정상 종료가 없습니다</string>
+    <string name="settings_crash_view">마지막 비정상 종료 보기</string>
+    <string name="settings_crash_view_desc">내용을 복사해 개발자에게 보내 주세요</string>
+    <string name="settings_crash_dialog_title">마지막 비정상 종료</string>
+    <string name="settings_crash_copy">복사</string>
+    <string name="settings_crash_copied">복사됨</string>
+    <string name="settings_crash_clear">지우기</string>
+    <string name="settings_crash_clip_label">PhotoCull 오류 보고서</string>
+
+    <!-- 상태 -->
+    <string name="settings_save_failed">설정을 저장하지 못했습니다. 다시 시도하세요</string>
+    <string name="settings_open_failed">설정 화면을 열 수 없습니다. 폰의 설정 앱에서 PhotoCull을 찾아 바꿔 주세요</string>
+    <string name="settings_browser_failed">브라우저를 열 수 없습니다</string>
+    <string name="settings_error_title">설정을 불러오지 못했습니다</string>
+    <string name="settings_error_cause">저장된 설정을 읽는 중 문제가 생겼습니다</string>
+    <string name="settings_error_fix">다시 시도해도 안 되면 앱을 다시 시작하세요</string>
+</resources>
