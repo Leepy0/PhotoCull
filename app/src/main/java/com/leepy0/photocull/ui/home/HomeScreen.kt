@@ -22,7 +22,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Immutable
@@ -35,6 +34,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.window.core.layout.WindowSizeClass
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosLargeTopBar
+import com.leepy0.photocull.ui.components.iosScroll
+import com.leepy0.photocull.ui.components.rememberIosScrollBehavior
 import com.leepy0.photocull.ui.LocalAppContainer
 import com.leepy0.photocull.ui.components.BottomActionBar
 import com.leepy0.photocull.ui.components.PrimaryActionButton
@@ -110,12 +112,14 @@ fun HomeContent(
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
+    val scroll = rememberIosScrollBehavior()
     KoreanLineBreaks {
         Scaffold(
-            modifier = modifier,
+            modifier = modifier.iosScroll(scroll),
             topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.app_name)) },
+                IosLargeTopBar(
+                    title = stringResource(R.string.app_name),
+                    scrollBehavior = scroll,
                     actions = {
                         if (state.updateAvailable) {
                             AssistChip(

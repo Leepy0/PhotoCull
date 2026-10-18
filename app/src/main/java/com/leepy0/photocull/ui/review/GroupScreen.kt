@@ -37,7 +37,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.window.core.layout.WindowSizeClass
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosTopBar
 import com.leepy0.photocull.data.db.GroupKind
 import com.leepy0.photocull.data.review.GroupCard
 import com.leepy0.photocull.data.review.MediaCard
@@ -135,7 +135,7 @@ fun GroupContent(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
+            IosTopBar(
                 navigationIcon = {
                     IconButton(onClick = actions.onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))

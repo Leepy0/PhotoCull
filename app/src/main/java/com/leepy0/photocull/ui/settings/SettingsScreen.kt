@@ -42,7 +42,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +59,9 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosLargeTopBar
+import com.leepy0.photocull.ui.components.iosScroll
+import com.leepy0.photocull.ui.components.rememberIosScrollBehavior
 import com.leepy0.photocull.data.settings.BlurSensitivity
 import com.leepy0.photocull.data.settings.ThemeMode
 import com.leepy0.photocull.storage.StoragePaths
@@ -180,9 +182,10 @@ fun SettingsContent(
     initialDialog: SettingsDialog? = null,
 ) {
     var dialog by rememberSaveable { mutableStateOf(initialDialog) }
+    val scroll = rememberIosScrollBehavior()
     Scaffold(
-        modifier = modifier,
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) },
+        modifier = modifier.iosScroll(scroll),
+        topBar = { IosLargeTopBar(stringResource(R.string.settings_title), scroll) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         when (state.phase) {
@@ -246,7 +249,7 @@ private fun SettingsList(
     ) {
         // ---- 가져오기 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_import), first = true) }
-        item {
+        item { SettingsGroup {
             SettingsClickItem(
                 icon = Icons.Outlined.Folder,
                 title = stringResource(R.string.settings_dest_folder),
@@ -254,8 +257,6 @@ private fun SettingsList(
                 onClick = { onOpenDialog(SettingsDialog.FOLDER) },
                 trailing = { Icon(Icons.Outlined.Edit, contentDescription = null) },
             )
-        }
-        item {
             SettingsSwitchItem(
                 icon = Icons.Outlined.CalendarMonth,
                 title = stringResource(R.string.settings_monthly),
@@ -266,8 +267,6 @@ private fun SettingsList(
                 checked = s.monthlySubfolders,
                 onCheckedChange = actions.onMonthly,
             )
-        }
-        item {
             SettingsChoiceItem(
                 icon = Icons.Outlined.SdCard,
                 title = stringResource(R.string.settings_card_source),
@@ -281,8 +280,6 @@ private fun SettingsList(
                 },
                 onSelect = actions.onMoveMode,
             )
-        }
-        item {
             SettingsSwitchItem(
                 icon = Icons.Outlined.NotificationsActive,
                 title = stringResource(R.string.settings_card_notification),
@@ -290,11 +287,11 @@ private fun SettingsList(
                 checked = s.cardNotification,
                 onCheckedChange = actions.onCardNotification,
             )
-        }
 
+        } }
         // ---- 검토 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_review)) }
-        item {
+        item { SettingsGroup {
             SettingsChoiceItem(
                 icon = Icons.Outlined.BlurOn,
                 title = stringResource(R.string.settings_blur),
@@ -318,8 +315,6 @@ private fun SettingsList(
                 },
                 onSelect = actions.onBlurSensitivity,
             )
-        }
-        item {
             SettingsChoiceItem(
                 icon = Icons.Outlined.BurstMode,
                 title = stringResource(R.string.settings_burst_gap),
@@ -329,8 +324,6 @@ private fun SettingsList(
                 label = { secondsLabel(it) },
                 onSelect = actions.onBurstGap,
             )
-        }
-        item {
             SettingsChoiceItem(
                 icon = Icons.Outlined.Timer,
                 title = stringResource(R.string.settings_short_video),
@@ -340,11 +333,11 @@ private fun SettingsList(
                 label = { secondsLabel(it) },
                 onSelect = actions.onShortVideo,
             )
-        }
 
+        } }
         // ---- 휴지통 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_trash)) }
-        item {
+        item { SettingsGroup {
             SettingsChoiceItem(
                 icon = Icons.Outlined.AutoDelete,
                 title = stringResource(R.string.settings_retention),
@@ -360,11 +353,11 @@ private fun SettingsList(
                 },
                 onSelect = actions.onRetention,
             )
-        }
 
+        } }
         // ---- 화면 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_display)) }
-        item {
+        item { SettingsGroup {
             SettingsChoiceItem(
                 icon = Icons.Outlined.Palette,
                 title = stringResource(R.string.settings_theme),
@@ -388,11 +381,11 @@ private fun SettingsList(
                 },
                 onSelect = actions.onTheme,
             )
-        }
 
+        } }
         // ---- 권한 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_permissions)) }
-        item {
+        item { SettingsGroup {
             SettingsPermissionItem(
                 icon = Icons.Outlined.FolderOpen,
                 title = stringResource(R.string.settings_perm_all_files),
@@ -401,8 +394,6 @@ private fun SettingsList(
                 need = PermissionNeed.REQUIRED,
                 onClick = actions.onOpenAllFiles,
             )
-        }
-        item {
             SettingsPermissionItem(
                 icon = Icons.Outlined.Notifications,
                 title = stringResource(R.string.settings_perm_notifications),
@@ -411,8 +402,6 @@ private fun SettingsList(
                 need = PermissionNeed.RECOMMENDED,
                 onClick = actions.onOpenNotifications,
             )
-        }
-        item {
             SettingsPermissionItem(
                 icon = Icons.Outlined.InstallMobile,
                 title = stringResource(R.string.settings_perm_install),
@@ -421,20 +410,18 @@ private fun SettingsList(
                 need = PermissionNeed.OPTIONAL,
                 onClick = actions.onOpenInstall,
             )
-        }
-        item {
             SettingsClickItem(
                 icon = Icons.AutoMirrored.Outlined.HelpOutline,
                 title = stringResource(R.string.settings_onboarding),
                 supporting = stringResource(R.string.settings_onboarding_desc),
                 onClick = actions.onOpenOnboarding,
             )
-        }
 
+        } }
         // ---- 앱 정보 ----
         item { SettingsSectionHeader(stringResource(R.string.settings_section_about)) }
-        item { SettingsInfoItem(Icons.Outlined.Info, stringResource(R.string.settings_version), state.versionLine) }
-        item {
+        item { SettingsGroup {
+            SettingsInfoItem(Icons.Outlined.Info, stringResource(R.string.settings_version), state.versionLine)
             SettingsSwitchItem(
                 icon = Icons.Outlined.Autorenew,
                 title = stringResource(R.string.settings_auto_update),
@@ -442,8 +429,6 @@ private fun SettingsList(
                 checked = s.autoUpdateCheck,
                 onCheckedChange = actions.onAutoUpdate,
             )
-        }
-        item {
             SettingsClickItem(
                 icon = Icons.Outlined.SystemUpdate,
                 title = stringResource(R.string.settings_check_update),
@@ -459,16 +444,12 @@ private fun SettingsList(
                     else -> null
                 },
             )
-        }
-        item {
             SettingsClickItem(
                 icon = Icons.AutoMirrored.Outlined.OpenInNew,
                 title = stringResource(R.string.settings_releases),
                 supporting = stringResource(R.string.settings_releases_desc),
                 onClick = actions.onOpenReleases,
             )
-        }
-        item {
             if (state.lastCrash != null) {
                 SettingsClickItem(
                     icon = Icons.Outlined.BugReport,
@@ -484,7 +465,7 @@ private fun SettingsList(
                     onClick = null,
                 )
             }
-        }
+        } }
     }
 }
 
