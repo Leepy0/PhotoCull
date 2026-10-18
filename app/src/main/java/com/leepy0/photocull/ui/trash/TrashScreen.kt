@@ -31,7 +31,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosLargeTopBar
+import com.leepy0.photocull.ui.components.iosScroll
+import com.leepy0.photocull.ui.components.rememberIosScrollBehavior
 import com.leepy0.photocull.ui.LocalAppContainer
 import com.leepy0.photocull.ui.components.BottomActionBar
 import com.leepy0.photocull.ui.components.EmptyState
@@ -134,11 +136,13 @@ fun TrashContent(
     // 선택 중 뒤로 가기 = 선택 해제
     BackHandler(enabled = ready && state.selection.isNotEmpty() && viewerId == null) { actions.onClearSelection() }
 
+    val scroll = rememberIosScrollBehavior()
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.iosScroll(scroll),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.trash_title)) },
+            IosLargeTopBar(
+                title = stringResource(R.string.trash_title),
+                scrollBehavior = scroll,
                 actions = {
                     if (ready && !state.isEmpty) {
                         TrashMenu(

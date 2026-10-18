@@ -21,11 +21,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -35,6 +40,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosSwitch
 import com.leepy0.photocull.ui.components.StatusKind
 import com.leepy0.photocull.ui.components.statusColor
 import com.leepy0.photocull.ui.theme.Spacing
@@ -46,18 +52,50 @@ internal fun TextStyle.phraseBreak(): TextStyle =
 /** 목록 글자 시작 위치(가장자리 16 + 아이콘 24 + 간격 16). 구역 제목과 선택 버튼을 글자에 맞춘다. */
 internal val SettingsTextStart = Spacing.m + Spacing.iconMedium + Spacing.m
 
-/** 구역 제목. 구역 사이는 테두리 대신 간격으로 나눈다. */
+/** 구역 제목(iOS 그룹 목록의 작은 보조색 제목). 구역 사이는 간격으로 나눈다. */
 @Composable
 internal fun SettingsSectionHeader(title: String, first: Boolean = false) {
     Text(
         title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = SettingsTextStart, end = Spacing.m, top = if (first) Spacing.xs else Spacing.l, bottom = Spacing.xxs)
+            .padding(start = Spacing.l, end = Spacing.m, top = if (first) Spacing.xs else Spacing.l, bottom = Spacing.xs)
             .semantics { heading() },
     )
+}
+
+/** iOS inset grouped 목록: 10dp 둥근 흰 셀 묶음, 항목 사이는 글자에 맞춘 0.5dp 구분선 */
+@Composable
+internal fun SettingsGroup(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.m),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        // 마지막 항목의 구분선 0.5dp는 높이를 줄여 둥근 모서리 밖으로 잘라낸다
+        Column(
+            Modifier.layout { measurable, constraints ->
+                val cut = 1
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, (placeable.height - cut).coerceAtLeast(0)) { placeable.place(0, 0) }
+            },
+        ) { content() }
+    }
+}
+
+@Composable
+private fun cellColors() = ListItemDefaults.colors(containerColor = Color.Transparent)
+
+@Composable
+private fun Modifier.cellDivider(): Modifier {
+    val color = MaterialTheme.colorScheme.outlineVariant
+    val start = with(LocalDensity.current) { SettingsTextStart.toPx() }
+    return drawBehind {
+        val y = size.height - 1f
+        drawLine(color, Offset(start, y), Offset(size.width, y), strokeWidth = 1f)
+    }
 }
 
 @Composable
@@ -76,11 +114,12 @@ internal fun SettingsClickItem(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     ListItem(
+        colors = cellColors(),
         headlineContent = { Text(title) },
         supportingContent = supporting?.let { { SupportingText(it) } },
         leadingContent = { Icon(icon, contentDescription = null) },
         trailingContent = trailing,
-        modifier = modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        modifier = modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).cellDivider(),
     )
 }
 
@@ -94,11 +133,12 @@ internal fun SettingsSwitchItem(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     ListItem(
+        colors = cellColors(),
         headlineContent = { Text(title) },
         supportingContent = supporting?.let { { SupportingText(it) } },
         leadingContent = { Icon(icon, contentDescription = null) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
-        modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        trailingContent = { IosSwitch(checked = checked, onCheckedChange = null) },
+        modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange).cellDivider(),
     )
 }
 
@@ -116,8 +156,9 @@ internal fun <T> SettingsChoiceItem(
     label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = Spacing.s)) {
+    Column(Modifier.fillMaxWidth().cellDivider().padding(bottom = Spacing.s)) {
         ListItem(
+            colors = cellColors(),
             headlineContent = { Text(title) },
             supportingContent = { SupportingText(supporting) },
             leadingContent = { Icon(icon, contentDescription = null) },
@@ -150,6 +191,7 @@ internal fun SettingsPermissionItem(
 ) {
     val label = stringResource(R.string.settings_perm_open, title)
     ListItem(
+        colors = cellColors(),
         headlineContent = { Text(title) },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
@@ -174,7 +216,7 @@ internal fun SettingsPermissionItem(
                 )
             }
         },
-        modifier = Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
+        modifier = Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = onClick).cellDivider(),
     )
 }
 
@@ -197,9 +239,10 @@ private fun PermissionState(kind: StatusKind, text: String) {
 @Composable
 internal fun SettingsInfoItem(icon: ImageVector, title: String, value: String) {
     ListItem(
+        colors = cellColors(),
         headlineContent = { Text(title) },
         supportingContent = { SupportingText(value) },
         leadingContent = { Icon(icon, contentDescription = null) },
-        colors = ListItemDefaults.colors(),
+        modifier = Modifier.cellDivider(),
     )
 }

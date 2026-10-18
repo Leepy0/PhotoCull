@@ -3,6 +3,8 @@ package com.leepy0.photocull.ui.review
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import com.leepy0.photocull.ui.theme.Spacing
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
@@ -12,13 +14,13 @@ import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +38,9 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.window.core.layout.WindowSizeClass
 import com.leepy0.photocull.R
+import com.leepy0.photocull.ui.components.IosLargeTopBar
+import com.leepy0.photocull.ui.components.iosScroll
+import com.leepy0.photocull.ui.components.rememberIosScrollBehavior
 import com.leepy0.photocull.data.review.MediaCard
 import com.leepy0.photocull.data.settings.BlurSensitivity
 import com.leepy0.photocull.ui.LocalAppContainer
@@ -125,11 +130,12 @@ fun ReviewContent(
     val videoGrid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
+    val scroll = rememberIosScrollBehavior()
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.iosScroll(scroll),
         topBar = {
             Column {
-                TopAppBar(title = { Text(stringResource(R.string.review_title)) })
+                IosLargeTopBar(stringResource(R.string.review_title), scroll)
                 ReviewTabs(state, actions.onSelectTab)
                 // 탭이 비어 있으면 빈 화면이 분석 진행을 보여주므로 여기서는 한 번만
                 if (state.phase == LoadPhase.READY && !state.isTabEmpty(state.tab)) AnalysisBanner(state.analysis)
@@ -220,12 +226,16 @@ fun ReviewContent(
 
 @Composable
 private fun ReviewTabs(state: ReviewUiState, onSelect: (ReviewTab) -> Unit) {
-    PrimaryTabRow(selectedTabIndex = state.tab.ordinal) {
-        ReviewTab.entries.forEach { t ->
-            Tab(
+    // iOS segmented control
+    val tabs = ReviewTab.entries
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = Spacing.m, vertical = Spacing.xs)) {
+        tabs.forEachIndexed { index, t ->
+            SegmentedButton(
                 selected = t == state.tab,
                 onClick = { onSelect(t) },
-                text = { Text(tabLabel(t, state.count(t).takeIf { state.phase == LoadPhase.READY }), maxLines = 1) },
+                shape = SegmentedButtonDefaults.itemShape(index, tabs.size),
+                icon = {},
+                label = { Text(tabLabel(t, state.count(t).takeIf { state.phase == LoadPhase.READY }), maxLines = 1) },
             )
         }
     }

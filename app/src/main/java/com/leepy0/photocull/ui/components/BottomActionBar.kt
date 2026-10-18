@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -14,6 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.leepy0.photocull.ui.theme.Spacing
 
 /**
@@ -31,17 +33,20 @@ fun BottomActionBar(
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = Spacing.zero,
     ) {
-        Column(
-            modifier = Modifier
-                .then(if (applyNavigationBarInset) Modifier.navigationBarsPadding() else Modifier)
-                .padding(horizontal = Spacing.m, vertical = Spacing.s),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-            content = content,
-        )
+        Column {
+            Hairline()
+            Column(
+                modifier = Modifier
+                    .then(if (applyNavigationBarInset) Modifier.navigationBarsPadding() else Modifier)
+                    .padding(horizontal = Spacing.m, vertical = Spacing.s),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                content = content,
+            )
+        }
     }
 }
 
-/** 큰 주요 버튼(높이 56dp, 가로 꽉 참) */
+/** 큰 주요 버튼(높이 50dp, 12dp 둥근 면 버튼, 가로 꽉 참) */
 @Composable
 fun PrimaryActionButton(
     text: String,
@@ -54,6 +59,7 @@ fun PrimaryActionButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = Spacing.primaryButtonHeight),
+        shape = RoundedCornerShape(12.dp),
         colors = if (destructive) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error,
