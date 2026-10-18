@@ -8,7 +8,9 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -174,6 +176,8 @@ private fun ModeSheet(
         onDismissRequest = finish,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+        tonalElevation = 0.dp,
     ) {
         UpdateSheetContent(mode = mode, actions = actions)
     }

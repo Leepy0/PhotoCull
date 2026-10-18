@@ -14,6 +14,10 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -126,8 +130,19 @@ fun AppNavHost(
     val isTopLevel = current == null || topLevels.any { t -> current.isRoute(t.routeClass) }
     val adaptiveType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfoV2())
 
+    val barColors = NavigationBarItemDefaults.colors(
+        selectedIconColor = MaterialTheme.colorScheme.primary,
+        selectedTextColor = MaterialTheme.colorScheme.primary,
+        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        indicatorColor = Color.Transparent,
+    )
+    val itemColors = NavigationSuiteDefaults.itemColors(navigationBarItemColors = barColors)
     NavigationSuiteScaffold(
         layoutType = if (isTopLevel) adaptiveType else NavigationSuiteType.None,
+        navigationSuiteColors = NavigationSuiteDefaults.colors(
+            navigationBarContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
         navigationSuiteItems = {
             topLevels.forEach { t ->
                 val selected = current?.isRoute(t.routeClass) == true
@@ -143,6 +158,7 @@ fun AppNavHost(
                         }
                     },
                     label = { Text(stringResource(t.labelRes)) },
+                    colors = itemColors,
                 )
             }
         },
