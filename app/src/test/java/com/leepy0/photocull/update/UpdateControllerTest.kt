@@ -238,21 +238,12 @@ class UpdateControllerTest {
         assertThat(installed).isEmpty()
     }
 
-    @Test fun installRequiresUnknownSourcesPermission() = runTest {
+    @Test fun installNeedsNoInstallPermission() = runTest {
         val c = readyController()
         shadowOf(context.packageManager).setCanRequestPackageInstalls(false)
-        assertThat(c.canInstallPackages()).isFalse()
+        assertThat(c.canInstallPackages()).isTrue()
         c.install()
-        val s = c.state.value as UpdateState.Failed
-        assertThat(s.message).isEqualTo(context.getString(R.string.update_err_no_permission))
-        assertThat(s.fix).contains("설치 허용하러 가기")
-        assertThat(c.installPermissionSettingsIntent().data.toString()).isEqualTo("package:${context.packageName}")
-        // 설정에서 허용하고 돌아오면(화면 재개) 낡은 '권한 없음'을 걷어 바로 [설치] 단계로
-        c.onAppResumed()
-        assertThat(c.state.value).isInstanceOf(UpdateState.Failed::class.java)
-        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
-        c.onAppResumed()
-        assertThat(c.state.value).isInstanceOf(UpdateState.ReadyToInstall::class.java)
+        assertThat(c.state.value).isInstanceOf(UpdateState.Installing::class.java)
     }
 
     @Test fun importBlockClearsByItselfWhenImportEnds() = runTest {

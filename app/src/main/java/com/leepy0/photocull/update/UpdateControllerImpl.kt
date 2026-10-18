@@ -537,7 +537,8 @@ class UpdateControllerImpl(
         scope.launch(io) { runCatching { prefs.setLastRunVersionCode(currentVersionCode) } }
     }
 
-    override fun canInstallPackages(): Boolean = runCatching { context.packageManager.canRequestPackageInstalls() }.getOrDefault(false)
+    /** 앱이 직접 설치하지 않으므로(다운로드 폴더의 APK를 사용자가 연다) 설치 권한이 필요 없다. */
+    override fun canInstallPackages(): Boolean = true
 
     override fun installPermissionSettingsIntent(): Intent =
         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))

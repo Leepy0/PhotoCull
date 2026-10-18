@@ -128,7 +128,7 @@ class ApkDownloader(
     fun cleanup(currentVersionCode: Int) = cleanupDir(dir, currentVersionCode)
 
     companion object {
-        private const val PREFIX = "PhotoCull-"
+        const val PREFIX = "PhotoCull-"
         private const val APK = ".apk"
         private const val PARTIAL = ".apk.partial"
         private const val BUFFER = 64 * 1024

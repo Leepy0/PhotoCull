@@ -27,14 +27,14 @@
     <!-- 설치 -->
     <string name="update_ready_title">설치 준비가 끝났습니다</string>
     <string name="update_ready_verified">파일 검증 완료 (SHA-256 일치)</string>
-    <string name="update_ready_restart_note">설치하면 앱이 잠시 닫혔다가 새 버전으로 다시 시작됩니다</string>
+    <string name="update_ready_restart_note">[설치]를 누르면 다운로드 목록이 열립니다. 목록의 PhotoCull APK를 눌러 설치하세요</string>
     <string name="update_action_install">설치</string>
     <string name="update_permission_title">앱 설치 허용이 필요합니다</string>
     <string name="update_permission_body">업데이트를 설치하려면 PhotoCull에 ‘출처를 알 수 없는 앱 설치’를 한 번 허용해야 합니다. 허용하고 돌아오면 바로 설치할 수 있습니다.</string>
     <string name="update_action_allow_install">설치 허용하러 가기</string>
     <string name="update_ready_wait_import">가져오기가 끝나면 설치할 수 있습니다</string>
     <string name="update_installing_title">설치 중</string>
-    <string name="update_installing_body">잠시 후 앱이 다시 시작됩니다</string>
+    <string name="update_installing_body">다운로드 목록에서 PhotoCull APK를 눌러 설치하세요</string>
 
     <!-- 공통 -->
     <string name="update_action_release_page">릴리스 페이지 열기</string>

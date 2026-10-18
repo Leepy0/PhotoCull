@@ -1,10 +1,13 @@
 package com.leepy0.photocull.update
 
+import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.annotation.StringRes
-import androidx.core.content.FileProvider
 import com.leepy0.photocull.R
 import java.io.File
 
@@ -12,28 +15,33 @@ import java.io.File
 data class FailureText(@StringRes val message: Int, @StringRes val fix: Int?)
 
 /**
- * 검증된 APK를 Android 시스템 설치 화면으로 전달한다.
- * PackageInstaller 세션을 직접 커밋하거나 사용자 확인 생략을 요청하지 않는다.
+ * 검증된 APK를 다운로드 폴더에 두고 시스템 다운로드 목록을 연다. 설치는 사용자가 거기서 APK를 눌러 직접 한다.
+ * 앱은 설치 권한(REQUEST_INSTALL_PACKAGES)이 없고 설치를 시작하지 않는다.
  */
 class ApkInstaller(private val context: Context) {
 
-    /** 시스템 설치 화면을 연다. 호출 실패 시 false를 반환한다. IO 스레드에서 호출. */
+    /** 다운로드 폴더에 APK를 복사하고 다운로드 목록을 연다. 실패하면 false. IO 스레드에서 호출. */
     fun install(apk: File, info: UpdateInfo): Boolean {
         return try {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.files",
-                apk,
-            )
-            val confirm = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            removePublished(context)
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, "${ApkDownloader.PREFIX}${ApkDownloader.safeVersion(info.versionName)}.apk")
+                put(MediaStore.Downloads.MIME_TYPE, APK_MIME)
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
             }
-
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+            try {
+                resolver.openOutputStream(uri)!!.use { out -> apk.inputStream().use { it.copyTo(out, 64 * 1024) } }
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }
+                return false
+            }
             // 설치 완료 후 앱이 직접 시작한 업데이트인지 구분한다.
             InstallMarker.mark(context, info.versionCode)
+            val open = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
-                context.startActivity(confirm)
+                context.startActivity(open)
                 true
             } catch (e: Exception) {
                 InstallMarker.clear(context)
@@ -42,6 +50,21 @@ class ApkInstaller(private val context: Context) {
         } catch (e: Exception) {
             InstallMarker.clear(context)
             false
+        }
+    }
+
+    companion object {
+        private const val APK_MIME = "application/vnd.android.package-archive"
+
+        /** 이 앱이 다운로드 폴더에 둔 업데이트 APK를 지운다(앱이 만든 항목이라 권한 없이 지울 수 있다). */
+        fun removePublished(context: Context) {
+            runCatching {
+                context.contentResolver.delete(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND ${MediaStore.Downloads.MIME_TYPE} = ?",
+                    arrayOf("${ApkDownloader.PREFIX}%.apk", APK_MIME),
+                )
+            }
         }
     }
 }
