@@ -14,10 +14,10 @@ object Spacing {
     val xxl = 48.dp
 
     /** 최소 터치 타깃 */
-    val touchTarget = 48.dp
+    val touchTarget = 44.dp
 
     /** 큰 주요 버튼 높이(엄지 영역) */
-    val primaryButtonHeight = 56.dp
+    val primaryButtonHeight = 50.dp
 
     /** 썸네일 그리드 최소 칸 너비(폴드 펼침에서 자동으로 열 수가 늘어난다) */
     val gridCellMin = 112.dp
