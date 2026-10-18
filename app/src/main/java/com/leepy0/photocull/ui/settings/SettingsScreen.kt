@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.InstallMobile
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -409,6 +410,16 @@ private fun SettingsList(
                 granted = state.permissions.notifications,
                 need = PermissionNeed.RECOMMENDED,
                 onClick = actions.onOpenNotifications,
+            )
+        }
+        item {
+            SettingsPermissionItem(
+                icon = Icons.Outlined.InstallMobile,
+                title = stringResource(R.string.settings_perm_install),
+                supporting = stringResource(R.string.settings_perm_install_desc),
+                granted = state.permissions.installPackages,
+                need = PermissionNeed.OPTIONAL,
+                onClick = actions.onOpenInstall,
             )
         }
         item {

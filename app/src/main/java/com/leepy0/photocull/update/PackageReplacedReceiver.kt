@@ -15,7 +15,6 @@ class PackageReplacedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         runCatching { ApkDownloader.cleanupDir(UpdateFiles.downloadDir(context), currentVersionCode = null) }
-        ApkInstaller.removePublished(context)
         val startedByUs = runCatching { InstallMarker.consume(context, BuildConfig.VERSION_CODE) }.getOrDefault(false)
         if (startedByUs) {
             UpdateNotifications.notifyUpdated(context, BuildConfig.VERSION_NAME)
