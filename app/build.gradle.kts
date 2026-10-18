@@ -55,8 +55,10 @@ android {
 
     buildTypes {
         release {
-            // 기기에서 직접 검증할 수 없는 환경이라 R8 축소로 인한 런타임 오류 위험을 피한다.
-            isMinifyEnabled = false
+            // APK 용량: R8 코드 축소 + 리소스 축소. 규칙은 proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
